@@ -12,7 +12,7 @@ Install the runtime dependencies with:
 python3 -m pip install -r requirements.txt
 ```
 
-The project uses only NumPy beyond the Python standard library; `requirements_lock.txt` contains the audited pinned copy. Windows 11 setup and execution instructions are in [`WINDOWS_RUNBOOK.md`](WINDOWS_RUNBOOK.md).
+The project uses only NumPy beyond the Python standard library; `requirements_lock.txt` contains the audited pinned copy. Setup and execution instructions are in [`WINDOWS_RUNBOOK.md`](WINDOWS_RUNBOOK.md) and [`MACOS_RUNBOOK.md`](MACOS_RUNBOOK.md). The Linux systemd launcher is optional; the Python command is portable across all three platforms.
 
 ## Business Entity Resolution Challenge
 
