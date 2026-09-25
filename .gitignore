@@ -1,0 +1,23 @@
+# Local challenge data (download separately; never commit raw data)
+dataset/
+
+# Generated run state, indexes, databases, logs, and candidate outputs
+artifacts/*
+!artifacts/blocking_cap_validation_20260925/
+artifacts/blocking_cap_validation_20260925/*
+!artifacts/blocking_cap_validation_20260925/README.md
+!artifacts/blocking_cap_validation_20260925/REPORT.md
+!artifacts/blocking_cap_validation_20260925/cap_validation.json
+!artifacts/blocking_cap_validation_20260925/query_only_sensitivity.json
+!artifacts/blocking_cap_validation_20260925/targeted_index/
+artifacts/blocking_cap_validation_20260925/targeted_index/*
+!artifacts/blocking_cap_validation_20260925/targeted_index/targeted_index_meta.json
+!artifacts/blocking_cap_validation_20260925/build_targeted_index.py
+!artifacts/blocking_cap_validation_20260925/prepare_targeted_replays.py
+output/
+
+# Python/cache/editor files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store

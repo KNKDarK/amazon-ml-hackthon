@@ -1,0 +1,185 @@
+{
+  "caps": {
+    "100": {
+      "candidate_metrics": {
+        "average_candidates_per_s1": 40.888739042481454,
+        "max_candidates_per_s1": 100,
+        "median_candidates_per_s1": 41.0,
+        "p95_candidates_per_s1": 84.0,
+        "queries_with_candidates": 1475,
+        "total_candidate_pairs": 60638,
+        "true_link_candidate_hits": 4519,
+        "true_link_candidate_recall": 0.8872962890241508,
+        "true_links": 5093
+      },
+      "cap": 100,
+      "configuration": {
+        "block_frequency_cap": 100,
+        "query_count": 1483,
+        "query_posting_cap": 100,
+        "query_split": "validation",
+        "target_sample_rate": 1
+      },
+      "full_test_projection": {
+        "combined_work_scale": 1128.577696342627,
+        "method": "linear S1 query scaling times target-row scaling; index uses target-row scaling; output peak includes temp plus final TSV",
+        "pilot_target_rows": 10320219,
+        "production_index_bytes_basis": 11309927940,
+        "production_index_seconds_basis": 8028.0,
+        "projected_candidate_pairs": 68434694,
+        "projected_candidate_pairs_tsv_bytes": 903596861,
+        "projected_index_bytes": 11309927940,
+        "projected_matching_results_tsv_bytes": 77768211,
+        "projected_peak_output_bytes": 1962730144,
+        "projected_peak_working_bytes": 15204927558,
+        "projected_results_sqlite_bytes": 1932269474,
+        "projected_runtime_hours": 7.063545554180684,
+        "projected_runtime_seconds": 25428.763995050464,
+        "query_safety_factor": 1.25,
+        "query_scale": 1168.2697235333783,
+        "target_scale": 0.9660249457884567,
+        "test_s1_rows": 1732544,
+        "test_target_rows": 9969589
+      },
+      "measured_resources": {
+        "candidate_pairs_tsv_bytes": 800651,
+        "index_bytes_replay_equivalent": 3468722176,
+        "index_seconds": 2469.376484303997,
+        "index_seconds_replay_builder": 2469.376484303997,
+        "index_source_rows_scanned": 10320219,
+        "indexed_target_rows": 10285461,
+        "matching_results_tsv_bytes": 66567,
+        "peak_rss_bytes": 112386048,
+        "query_and_output_seconds": 12.33465027809143,
+        "results_sqlite_bytes": 1712128,
+        "run_seconds": 13.876145362854004,
+        "throughput_queries_per_second": 120.22971258981562
+      }
+    },
+    "1000": {
+      "candidate_metrics": {
+        "average_candidates_per_s1": 502.3128792987188,
+        "max_candidates_per_s1": 993,
+        "median_candidates_per_s1": 529.0,
+        "p95_candidates_per_s1": 894.9000000000001,
+        "queries_with_candidates": 1483,
+        "total_candidate_pairs": 744930,
+        "true_link_candidate_hits": 4825,
+        "true_link_candidate_recall": 0.9473787551541332,
+        "true_links": 5093
+      },
+      "cap": 1000,
+      "configuration": {
+        "block_frequency_cap": 1000,
+        "query_count": 1483,
+        "query_posting_cap": 1000,
+        "query_split": "validation",
+        "target_sample_rate": 1
+      },
+      "full_test_projection": {
+        "combined_work_scale": 1128.577696342627,
+        "method": "linear S1 query scaling times target-row scaling; index uses target-row scaling; output peak includes temp plus final TSV",
+        "pilot_target_rows": 10320219,
+        "production_index_bytes_basis": 11309927940,
+        "production_index_seconds_basis": 8028.0,
+        "projected_candidate_pairs": 840711383,
+        "projected_candidate_pairs_tsv_bytes": 10857131869,
+        "projected_index_bytes": 11309927940,
+        "projected_matching_results_tsv_bytes": 80109423,
+        "projected_peak_output_bytes": 21874482584,
+        "projected_peak_working_bytes": 52576445079,
+        "projected_results_sqlite_bytes": 19392034555,
+        "projected_runtime_hours": 57.23964430314921,
+        "projected_runtime_seconds": 206062.71949133716,
+        "query_safety_factor": 1.25,
+        "query_scale": 1168.2697235333783,
+        "target_scale": 0.9660249457884567,
+        "test_s1_rows": 1732544,
+        "test_target_rows": 9969589
+      },
+      "measured_resources": {
+        "candidate_pairs_tsv_bytes": 9620190,
+        "index_bytes_replay_equivalent": 3468722176,
+        "index_seconds": 2469.376484303997,
+        "index_seconds_replay_builder": 2469.376484303997,
+        "index_source_rows_scanned": 10320219,
+        "indexed_target_rows": 10285461,
+        "matching_results_tsv_bytes": 68571,
+        "peak_rss_bytes": 142352384,
+        "query_and_output_seconds": 140.37826204299927,
+        "results_sqlite_bytes": 17182720,
+        "run_seconds": 141.9186143875122,
+        "throughput_queries_per_second": 10.564308088280526
+      }
+    },
+    "500": {
+      "candidate_metrics": {
+        "average_candidates_per_s1": 240.36210384356036,
+        "max_candidates_per_s1": 500,
+        "median_candidates_per_s1": 247.0,
+        "p95_candidates_per_s1": 432.9000000000001,
+        "queries_with_candidates": 1482,
+        "total_candidate_pairs": 356457,
+        "true_link_candidate_hits": 4755,
+        "true_link_candidate_recall": 0.9336344001570783,
+        "true_links": 5093
+      },
+      "cap": 500,
+      "configuration": {
+        "block_frequency_cap": 500,
+        "query_count": 1483,
+        "query_posting_cap": 500,
+        "query_split": "validation",
+        "target_sample_rate": 1
+      },
+      "full_test_projection": {
+        "combined_work_scale": 1128.577696342627,
+        "method": "linear S1 query scaling times target-row scaling; index uses target-row scaling; output peak includes temp plus final TSV",
+        "pilot_target_rows": 10320219,
+        "production_index_bytes_basis": 11309927940,
+        "production_index_seconds_basis": 8028.0,
+        "projected_candidate_pairs": 402289420,
+        "projected_candidate_pairs_tsv_bytes": 5206502472,
+        "projected_index_bytes": 11309927940,
+        "projected_matching_results_tsv_bytes": 79720389,
+        "projected_peak_output_bytes": 10572445722,
+        "projected_peak_working_bytes": 31386550788,
+        "projected_results_sqlite_bytes": 9504177126,
+        "projected_runtime_hours": 28.663701496050844,
+        "projected_runtime_seconds": 103189.32538578304,
+        "query_safety_factor": 1.25,
+        "query_scale": 1168.2697235333783,
+        "target_scale": 0.9660249457884567,
+        "test_s1_rows": 1732544,
+        "test_target_rows": 9969589
+      },
+      "measured_resources": {
+        "candidate_pairs_tsv_bytes": 4613331,
+        "index_bytes_replay_equivalent": 3468722176,
+        "index_seconds": 2469.376484303997,
+        "index_seconds_replay_builder": 2469.376484303997,
+        "index_source_rows_scanned": 10320219,
+        "indexed_target_rows": 10285461,
+        "matching_results_tsv_bytes": 68238,
+        "peak_rss_bytes": 125472768,
+        "query_and_output_seconds": 67.45575475692749,
+        "results_sqlite_bytes": 8421376,
+        "run_seconds": 69.04269886016846,
+        "throughput_queries_per_second": 21.984758687680706
+      }
+    }
+  },
+  "model": {
+    "path": "artifacts/pilot_10k_recovery_manual_20250925/model.json",
+    "sha256": "8d2dec027e7bbdc0aaba64351d7375492ed9b67f962824a186a6f2647adfd9b6"
+  },
+  "pilot": {
+    "original_pilot_candidate_hits_on_validation": 4674,
+    "original_pilot_validation_average_candidates": 115.6358732299393,
+    "original_pilot_validation_p95_candidates": 216.9000000000001,
+    "original_pilot_validation_pairs": 171488,
+    "original_pilot_validation_recall": 0.9177302179462007,
+    "validation_queries": 1483,
+    "validation_true_links": 5093
+  }
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=Supervised 10K training-only entity-resolution pilot
+Documentation=file:/home/knk/ml/student_resource/pilot/README.md
+After=default.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/knk/ml/student_resource
+ExecStart=/home/knk/ml/student_resource/pilot/launch_supervised_pilot.sh
+Environment=PYTHONUNBUFFERED=1
+StandardInput=null
+StandardOutput=append:/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/pilot.stdout.log
+StandardError=append:/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/pilot.stderr.log
+SyslogIdentifier=student-resource-pilot-10k
+TimeoutStartSec=infinity
+TimeoutStopSec=120s
+KillMode=control-group
+KillSignal=SIGTERM
+FinalKillSignal=SIGKILL
+SendSIGKILL=yes
+Restart=no
+UMask=0022
+NoNewPrivileges=true
+PrivateTmp=true

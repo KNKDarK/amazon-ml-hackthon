@@ -1,0 +1,3 @@
+# Audited baseline runtime; Python standard library supplies SQLite and CSV.
+# Observed runtime: Python 3.14.7
+numpy==2.5.3

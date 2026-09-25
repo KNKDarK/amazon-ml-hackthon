@@ -1,0 +1,153 @@
+{
+  "audit_timestamp_local": "2026-09-25 Asia/Kolkata",
+  "baseline": "artifacts/pilot_10k_recovery_manual_20250925",
+  "baseline_metrics": {
+    "candidate_recall_expected": 0.9231013847532595,
+    "candidate_rows": 1145685,
+    "exit_code": 0,
+    "feature_rows": 1145685,
+    "pilot_test_macro_f05": 0.7964702556051716,
+    "pilot_test_precision": 0.9453952730236349,
+    "pilot_test_recall": 0.6622264509990485,
+    "validation_macro_f05": 0.7969890210953199,
+    "validation_threshold": 0.985,
+    "validation_top_k": 5
+  },
+  "bounded_preflight": {
+    "path": "/tmp/er_test_slice_preflight.json",
+    "sha256": "b3f95f104b4e6e3bf376330024867a7949f6f9d54701ec206de9b86aae9f5127"
+  },
+  "files": {
+    "Documentation_template.md": {
+      "bytes": 2175,
+      "sha256": "599b661af92a8d5c239ba283ee9b2ffed050c0bc86360964430a2f9857e8c599"
+    },
+    "README.md": {
+      "bytes": 14130,
+      "sha256": "be67cd7d9dbc48a58f93e1f61402360655debac64214115bf9d27d3301939285"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/REPORT.md": {
+      "bytes": 1512,
+      "sha256": "271e658e5a8a6993aeb1c28c73ad9f66e57cb56d8c9f8e926998a44001ca033a"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/error_analysis.json": {
+      "bytes": 6426,
+      "sha256": "3df0c39b6e2381c1ca0d90b8242da88c1f4270c36eae4665681fc30a35533ac5"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/evaluation.json": {
+      "bytes": 5022,
+      "sha256": "a59d136d5fc55a971ba10154cb5916ebb063686e5075e0cbda98f0284e3b243d"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/model.json": {
+      "bytes": 3875,
+      "sha256": "8d2dec027e7bbdc0aaba64351d7375492ed9b67f962824a186a6f2647adfd9b6"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_candidate_pairs.tsv": {
+      "bytes": 14894915,
+      "sha256": "5613d6a9c202241d39ec034f9d5ab3c433b98078ffbb13b47b825a3cdffef383"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_candidates.sqlite": {
+      "bytes": 129073152,
+      "sha256": "8f36b4ab354feaf119a8d9f392f1e532e85826b12c486c25215713f350dbafbd"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_features.sqlite": {
+      "bytes": 191823872,
+      "sha256": "aeaee0a64f24e90c98f63881a44a89de6d6e8c74218b5d5cf94e1796497a95c2"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_labels.tsv": {
+      "bytes": 575336,
+      "sha256": "3975564b5443c7d8a1e9442fabe76cbac03c46658bebf297c71afd9c841c1d1f"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_matching_results.tsv": {
+      "bytes": 439972,
+      "sha256": "b5fa4c716d62634c1b8ee073db295f5352bf25d688bba57cc807ee7ecf448e6a"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_predictions.tsv": {
+      "bytes": 429255,
+      "sha256": "1fb3d4cb08a5a2687b13cf8a714e87df294aeb505532e563dba92890b71188b4"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_queries.tsv": {
+      "bytes": 1064450,
+      "sha256": "d59b5bf9f8e41838078767ed95490e47a8203f257cfed068fa5e96d5345e71a8"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_report.json": {
+      "bytes": 939252,
+      "sha256": "092a949f0bfd5ac2011972ce03e5047506f4b3235a04b63f2ee392f8601f6909"
+    },
+    "artifacts/pilot_10k_recovery_manual_20250925/pilot_scores.sqlite": {
+      "bytes": 37912576,
+      "sha256": "14041ff69a12c3cab4d49c1a7e1b6e9894fe8cba371c0d60485f132dce270375"
+    },
+    "audit_report.md": {
+      "bytes": 8229,
+      "sha256": "fabcfd485517aac91c5530034171d9bedf42e393cc3d22da2afea75bb3d4a18b"
+    },
+    "dataset/test/test_source1.tsv": {
+      "bytes": 175022086,
+      "sha256": "3d4a32c54c2ca9c53fd7c2be105bf26f708f94c4d2f88eb370972a195665c2f5"
+    },
+    "dataset/test/test_source2.tsv": {
+      "bytes": 509456422,
+      "sha256": "79d906c7497af2ace70aa277f6e334a652094909de99bd6c57b53420b6a7b2dd"
+    },
+    "dataset/test/test_source3.tsv": {
+      "bytes": 506002772,
+      "sha256": "850942b11d2a4343486ed0834e28bce9f3b385f3fd497fd60ccf4ea3b8bda035"
+    },
+    "dataset/train/train_ground_truth.tsv": {
+      "bytes": 127015583,
+      "sha256": "70bc1d8a16c667e0155c2105d0ab2ebe41d7e7a85d8a529e3ca81c6c3a5af037"
+    },
+    "dataset/train/train_source1.tsv": {
+      "bytes": 210069713,
+      "sha256": "591af0e1dfeb65cab71ea6ee8cb69df00f92d6ba6fa79e05746c938775d14973"
+    },
+    "dataset/train/train_source2.tsv": {
+      "bytes": 489301488,
+      "sha256": "6336c1a055eec79cf8a6d99fdc8d32a2e4d9dc2662e00963cb35d66b89ed09ed"
+    },
+    "dataset/train/train_source3.tsv": {
+      "bytes": 503705637,
+      "sha256": "67da22f5151898ff3006febd836c1a159e97ae95efa7257a5aff4fda685e58e9"
+    },
+    "error_analysis.md": {
+      "bytes": 2602,
+      "sha256": "7bbca2725d916f35fe21f93bd20fa52032ecb640b641ae8f805fc2e41ee4cf87"
+    },
+    "pilot/README.md": {
+      "bytes": 1846,
+      "sha256": "af027fc796a9ce9669e44649d8ec41433bc2945b3921e36cf2672482a98a9430"
+    },
+    "pilot/er_common.py": {
+      "bytes": 21850,
+      "sha256": "980e196b4f7c377a3c99abd66274b05c087157b147106905b896a953a5ac3696"
+    },
+    "pilot/requirements.txt": {
+      "bytes": 13,
+      "sha256": "5c12d85e7c08038d1dd9ffbf8119d12ce808885230a47e2bf65dcd9f114659d5"
+    },
+    "pilot/run_pilot.py": {
+      "bytes": 56087,
+      "sha256": "1b9beb8d484140c188b69c28eabb9413ac47172106f95d34d599e7f029f9d566"
+    },
+    "requirements_lock.txt": {
+      "bytes": 124,
+      "sha256": "95e6d70b64ad1af7351ce98f8f4eea67596185fc0fc67450f5fb1cacef8da2e5"
+    },
+    "utils/validate_submission.py": {
+      "bytes": 13687,
+      "sha256": "f96f59934383a15095914f507620c078c474e8f9c60e864b2d051ed173a22dfc"
+    }
+  },
+  "git": {
+    "commit": null,
+    "status": "unavailable: project and parent lack usable .git metadata"
+  },
+  "project": "student_resource",
+  "runtime": {
+    "cpu_count": 12,
+    "numpy": "2.5.3",
+    "os": "Linux-7.2.6-1-cachyos-x86_64-with-glibc2.44",
+    "python": "3.14.7"
+  }
+}

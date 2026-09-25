@@ -1,0 +1,22 @@
+{
+  "1000": {
+    "average_candidates_per_s1": 72.98314227916386,
+    "block_frequency_cap": 100,
+    "p95_candidates_per_s1": 189.89999999999986,
+    "query_posting_cap": 1000,
+    "total_candidate_pairs": 108234,
+    "true_link_candidate_hits": 4596,
+    "true_link_candidate_recall": 0.902415079520911,
+    "true_links": 5093
+  },
+  "500": {
+    "average_candidates_per_s1": 72.97235333782872,
+    "block_frequency_cap": 100,
+    "p95_candidates_per_s1": 189.89999999999986,
+    "query_posting_cap": 500,
+    "total_candidate_pairs": 108218,
+    "true_link_candidate_hits": 4596,
+    "true_link_candidate_recall": 0.902415079520911,
+    "true_links": 5093
+  }
+}

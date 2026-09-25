@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "event_id": "evt-synthetic-job-001-v2",
+  "event_version": 2,
+  "job_id": "job-synthetic-001",
+  "occurred_at": "2026-09-25T10:05:00Z",
+  "status": "completed",
+  "runner_slot": "B",
+  "ram_gb": 16,
+  "experiment": {
+    "name": "synthetic-logreg-v1",
+    "code_revision": "abc1234",
+    "config_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "dataset_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "metrics": {
+    "f05": 0.8125,
+    "precision": 0.84,
+    "recall": 0.79,
+    "candidate_count": 1200,
+    "runtime_seconds": 4.2,
+    "peak_rss_mb": 310
+  },
+  "artifacts": [
+    {
+      "kind": "report",
+      "ref": "artifact:synthetic-report-001",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "bytes": 2048
+    }
+  ]
+}

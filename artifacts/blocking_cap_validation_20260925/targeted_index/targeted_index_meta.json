@@ -1,0 +1,20 @@
+{
+  "index_bytes": 3468722176,
+  "integrity": {
+    "keyfreq_rows": 17023,
+    "posting_rows": 71755119,
+    "rids": 10285461,
+    "target_ids": 10285461,
+    "target_rows": 10285461
+  },
+  "note": "Only postings for replay query keys are retained; key frequencies for those keys equal the full index.",
+  "query_count": 1483,
+  "query_key_count": 17462,
+  "raw_target_rows": {
+    "2": 5034616,
+    "3": 5285603
+  },
+  "retained_target_rows": 10285461,
+  "seconds": 2469.376484303997,
+  "target_sample_rate": 1
+}
