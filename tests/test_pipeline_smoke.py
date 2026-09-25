@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from pilot.er_common import (
     pair_features,
     peak_rss_bytes,
 )
+from pilot.stream_infer import acquire_run_lock
 
 
 class PipelineSmokeTests(unittest.TestCase):
@@ -43,6 +45,12 @@ class PipelineSmokeTests(unittest.TestCase):
         self.assertGreater(disk_free_bytes(ROOT), 0)
         for value in (available_memory_bytes(), current_rss_bytes(), peak_rss_bytes()):
             self.assertGreaterEqual(value, 0)
+
+    def test_run_lock_acquisition(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            lock_path = Path(directory) / ".run.lock"
+            with lock_path.open("a+") as handle:
+                self.assertTrue(acquire_run_lock(handle))
 
     def test_inference_cli_help(self) -> None:
         result = subprocess.run(
