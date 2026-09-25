@@ -38,6 +38,27 @@ SQLite is used for disk-backed candidates, float32 feature batches, and scores.
 - Runtime batches halve when system available memory drops below 2 GiB (Linux `/proc`, macOS/BSD `sysconf`, or Windows Win32 memory status).
 - The script stops after the 10K pilot and writes projections only.
 
+## Preprocessing and data quality
+
+`text_normalization.py` is the preprocessing / data-quality layer that runs before
+blocking and matching. It is standard library only, streaming, deterministic and
+idempotent, and it never decides that two records are the same entity.
+
+```text
+python -m pilot.text_normalization \
+  --input dataset/train/train_source1.tsv dataset/train/train_source2.tsv \
+  --output-dir artifacts/normalized \
+  --qa-json artifacts/normalized/data_quality.json
+```
+
+It emits, per row, the untouched `*_raw` values plus `*_display` (case preserved),
+`*_key` (folded comparison form), `*_signature` (order-insensitive, **blocking
+only - never a merge rule**), `*_blocking_tokens`, extracted numbers/postal codes,
+legal forms, trade name, web token, `*_is_missing` booleans and `*_flags`.
+Missing values are never imputed. Every rule is documented on the constant that
+implements it and covered by `tests/test_text_normalization.py`; the measured
+motivation is in `DATASET_INVENTORY.md`.
+
 ## Main artifacts
 
 - `REPORT.md`: concise measured results.
