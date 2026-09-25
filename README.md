@@ -4,7 +4,7 @@
 
 The source code, documentation, lightweight validation report, and reproducibility metadata are tracked here. The raw `dataset/` files, generated `artifacts/`, SQLite indexes, logs, and final run outputs are intentionally excluded by `.gitignore`; provide the challenge data separately before running the pipeline.
 
-GitHub Actions runs the Python smoke/schema checks in `.github/workflows/ci.yml` on pushes and pull requests to `main`.
+GitHub Actions runs the Python smoke/schema checks in `.github/workflows/ci.yml` for every pushed branch/tag and for pull requests from any branch.
 
 ## Business Entity Resolution Challenge
 

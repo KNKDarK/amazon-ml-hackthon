@@ -1,10 +1,10 @@
 name: CI
 
 on:
+  # Run for every branch/tag push, not only main.
   push:
-    branches: [main]
+  # Validate pull requests from any branch, including contributor forks.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
