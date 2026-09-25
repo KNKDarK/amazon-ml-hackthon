@@ -214,7 +214,10 @@ def main() -> int:
         },
         "caps": results,
     }
-    (args.root / "cap_validation.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    with (args.root / "cap_validation.json").open(
+        "w", encoding="utf-8", newline="\n"
+    ) as handle:
+        handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
 

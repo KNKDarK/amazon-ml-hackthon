@@ -298,6 +298,7 @@ def select_block_postings(
     truth: Mapping[int, Set[str]],
     max_projected_postings: int,
     fixed_cap: int | None = None,
+    target_row_total: int | None = None,
 ) -> Tuple[Dict[str, List[Tuple[int, int]]], Dict[int, Set[str]], Dict[str, object]]:
     # Sort each query's postings from most selective (low target frequency) to least.
     by_query: List[List[Tuple[int, str, int]]] = [[] for _ in queries]
@@ -433,9 +434,9 @@ def select_block_postings(
         "active_query_postings": active_entries,
         "expected_true_pair_recall": recall,
         "expected_true_query_recall": query_recall,
-        "expected_reduction_ratio": 1.0 - projected / (len(queries) * int(
-            source_row_total_for_projection(queries)
-        )),
+        "expected_reduction_ratio": 1.0 - projected / (
+            len(queries) * int(target_row_total or source_row_total_for_projection())
+        ),
         "schemes_after_cap": per_scheme,
         "trials": trials,
     }
@@ -444,9 +445,9 @@ def select_block_postings(
     return dict(active_index), retained, result
 
 
-def source_row_total_for_projection(queries: Sequence[QueryRecord]) -> int:
-    # Actual target row totals are patched into the report after candidate generation.
-    return 10_320_620
+def source_row_total_for_projection() -> int:
+    """Fallback for the audited challenge corpus; production passes the measured total."""
+    return 10_320_219
 
 
 def persist_candidates(
@@ -1277,6 +1278,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     active_index, retained_by_query, selection_stats = select_block_postings(
         queries, key_index, key_counts, true_keys, truth,
         args.max_projected_postings, args.selection_cap,
+        int(frequency_stats["target_rows_scanned"]),
     )
     del retained_by_query
     timer.finish("select_block_postings", started)

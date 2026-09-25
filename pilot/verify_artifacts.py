@@ -8,7 +8,6 @@ import csv
 import json
 import math
 import sqlite3
-from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Set
 
@@ -97,6 +96,9 @@ def main() -> int:
             ).fetchone()
             true_hits += int(hit is not None)
     recall = true_hits / true_pairs if true_pairs else 1.0
+    candidate_db.close()
+    feature_db.close()
+    score_db.close()
 
     scores: List[float] = []
     for split in ("validation", "test"):
