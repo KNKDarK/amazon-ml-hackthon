@@ -34,7 +34,7 @@ def parse_args():
     p=argparse.ArgumentParser()
     p.add_argument('--data-root',type=Path,default=Path('dataset/test'))
     p.add_argument('--work-dir',type=Path,required=True)
-    p.add_argument('--model',type=Path,default=Path('artifacts/pilot_10k_restart_20260925/model.json'))
+    p.add_argument('--model',type=Path,default=Path('pilot/frozen_pilot_model.json'))
     p.add_argument('--queries',type=int,default=2500,help='bounded preflight query count; 0 means all S1')
     p.add_argument('--mode',choices=('preflight','full'),default='preflight')
     p.add_argument('--index-batch',type=int,default=5000)

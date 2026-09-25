@@ -39,6 +39,7 @@ SQLite is used for disk-backed candidates, float32 feature batches, and scores.
 - `candidate_stats.json`: candidate volume and blocking recall.
 - `evaluation.json`: held-out macro F0.5 and decision policy.
 - `model.json`: feature names, normalization, weights, and training metadata.
+- `frozen_pilot_model.json`: tracked byte-identical copy of the successful frozen model used by production inference.
 - `pilot_queries.tsv`, `pilot_labels.tsv`: fixed validation sample and labels.
 - `pilot_candidates.sqlite`: disk-backed candidate pairs.
 - `pilot_features.sqlite`: disk-backed pair-feature batches.

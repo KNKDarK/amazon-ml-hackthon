@@ -10,7 +10,7 @@
 - Used `pilot/stream_infer.py`, the production SQLite postings/key-frequency retrieval and candidate/scoring path, with `target_sample_rate=1`.
 - For each requested value, both production knobs were set to that value: `--block-cap=C --query-posting-cap=C`.
 - The replay index streamed the complete target corpus. To avoid persisting keys that cannot be reached by this fixed validation query set, it retained postings for all 17,462 validation-query keys; key frequencies and candidate sets for those queries are equivalent to the full production index. It retained 10,285,461 target rows and 71,755,119 postings (the omitted rows/keys are unreachable by these fixed queries). The production query/candidate code was unchanged.
-- The frozen model was read-only: `artifacts/pilot_10k_recovery_manual_20250925/model.json`, SHA-256 `8d2dec027e7bbdc0aaba64351d7375492ed9b67f962824a186a6f2647adfd9b6`. No training or model write occurred.
+- The frozen model was read-only: `pilot/frozen_pilot_model.json` (byte-identical to the successful pilot artifact), SHA-256 `8d2dec027e7bbdc0aaba64351d7375492ed9b67f962824a186a6f2647adfd9b6`. No training or model write occurred.
 - P95 below is the pilot-style linearly interpolated percentile, with zero-candidate queries included.
 
 ## Measured results
@@ -69,7 +69,7 @@ The current free space after cleanup is about 68.5 GiB. The 1,000-cap projection
 This launches the **test** full run with the recommended cap. It was deliberately not executed.
 
 ```fish
-tmux new-session -d -s amazon-ml-inference-cap500 'fish -lc "cd /home/knk/ml/student_resource; and mkdir -p artifacts/full_inference_20260925_cap500 output; and /usr/bin/python3 -u pilot/stream_infer.py --data-root dataset/test --work-dir artifacts/full_inference_20260925_cap500 --output-dir output --model artifacts/pilot_10k_recovery_manual_20250925/model.json --mode full --queries 0 --target-sample-rate 1 --query-stride 1 --index-batch 5000 --index-synchronous FULL --block-cap 500 --query-posting-cap 500 >> artifacts/full_inference_20260925_cap500/run.log 2>&1"'
+tmux new-session -d -s amazon-ml-inference-cap500 'fish -lc "cd /home/knk/ml/student_resource; and mkdir -p artifacts/full_inference_20260925_cap500 output; and /usr/bin/python3 -u pilot/stream_infer.py --data-root dataset/test --work-dir artifacts/full_inference_20260925_cap500 --output-dir output --model pilot/frozen_pilot_model.json --mode full --queries 0 --target-sample-rate 1 --query-stride 1 --index-batch 5000 --index-synchronous FULL --block-cap 500 --query-posting-cap 500 >> artifacts/full_inference_20260925_cap500/run.log 2>&1"'
 ```
 
 ## Output-path confirmation
