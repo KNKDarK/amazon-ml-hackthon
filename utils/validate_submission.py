@@ -165,7 +165,7 @@ def validate_id_list_file(
             id_set = set(ids)
             if retain_mapping:
                 mapping[s1] = id_set
-            if reference_mapping is not None and id_set - reference_mapping.get(s1, set()):
+            if reference_mapping is not None and reference_mapping.get(s1, set()) - id_set:
                 if subset_offenders is None:
                     raise ValueError("subset_offenders is required with reference_mapping")
                 subset_offenders.add(s1)

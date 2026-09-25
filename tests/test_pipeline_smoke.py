@@ -27,6 +27,7 @@ from pilot.er_common import (
 )
 from pilot.run_pilot import QueryRecord, pair_features_to_blob, select_block_postings
 from pilot.stream_infer import acquire_run_lock
+from utils.validate_submission import validate as validate_submission
 
 
 class PipelineSmokeTests(unittest.TestCase):
@@ -88,6 +89,59 @@ class PipelineSmokeTests(unittest.TestCase):
         )
         self.assertEqual(cap_100["expected_true_pair_recall"], 0.0)
         self.assertEqual(report["selection_split"], "validation")
+
+    def test_candidate_subset_check_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            matching = root / "matching_results.tsv"
+            candidate = root / "candidate_pairs.tsv"
+            test_dir = root / "test"
+            test_dir.mkdir()
+            matching.write_text(
+                "source1_entity_id\tmatched_entity_ids\nS1-1\tS2-1\n",
+                encoding="utf-8",
+                newline="",
+            )
+            (test_dir / "test_source1.tsv").write_text(
+                "entity_id\tbusiness_name\tbusiness_address\tcountry\nS1-1\tA\tB\tUS\n",
+                encoding="utf-8",
+                newline="",
+            )
+            (test_dir / "test_source2.tsv").write_text(
+                "entity_id\tbusiness_name\tbusiness_address\tcountry\n"
+                "S2-1\tA\tB\tUS\nS2-2\tOther\tC\tUS\n",
+                encoding="utf-8",
+                newline="",
+            )
+            (test_dir / "test_source3.tsv").write_text(
+                "entity_id\tbusiness_name\tbusiness_address\tcountry\n",
+                encoding="utf-8",
+                newline="",
+            )
+            candidate.write_text(
+                "source1_entity_id\tcandidate_entity_ids\nS1-1\tS2-1,S2-2\n",
+                encoding="utf-8",
+                newline="",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                errors, warnings = validate_submission(
+                    str(matching), str(candidate), str(test_dir), check_ids=True
+                )
+            self.assertEqual(errors, [])
+            self.assertEqual(warnings, [])
+
+            candidate.write_text(
+                "source1_entity_id\tcandidate_entity_ids\nS1-1\tS2-2\n",
+                encoding="utf-8",
+                newline="",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                errors, warnings = validate_submission(
+                    str(matching), str(candidate), str(test_dir), check_ids=True
+                )
+            self.assertEqual(errors, [])
+            self.assertEqual(len(warnings), 1)
+            self.assertIn("not present in candidate_pairs.tsv", warnings[0])
 
     def test_tiny_end_to_end_and_missing_result_database(self) -> None:
         with tempfile.TemporaryDirectory(prefix="pipeline données ") as directory:
