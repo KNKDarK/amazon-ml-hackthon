@@ -4,6 +4,8 @@
 
 The source code, documentation, lightweight validation report, and reproducibility metadata are tracked here. The raw `dataset/` files, generated `artifacts/`, SQLite indexes, logs, and final run outputs are intentionally excluded by `.gitignore`; provide the challenge data separately before running the pipeline.
 
+GitHub Actions runs the Python smoke/schema checks in `.github/workflows/ci.yml` on pushes and pull requests to `main`.
+
 ## Business Entity Resolution Challenge
 
 In large-scale commercial platforms, business identity data arrives from multiple independent sources — each contributing partial, noisy fragments of information about the same real-world entities. These fragments share no common identifiers, and the challenge of determining which records refer to the same business is known as Entity Resolution (ER). Your challenge is to build an ML solution that, given business records from 3 independent data sources with noisy and inconsistent fields, determines which records across sources refer to the same real-world business entity.
