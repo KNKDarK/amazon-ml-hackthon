@@ -6,11 +6,21 @@ exist only in a bounded per-query batch; completed query results are committed t
 SQLite and rendered to the requested output directory after inference.
 """
 from __future__ import annotations
-import argparse, csv, fcntl, json, os, sqlite3, time, resource
+import argparse, csv, json, os, sqlite3, time
 from pathlib import Path
 import numpy as np
-from er_common import (FEATURE_NAMES, PairText, blocking_keys,
-    iter_tsv, normalize_country, pair_features, stable_u64)
+try:
+    import fcntl
+except ImportError:  # Windows uses the msvcrt fallback below.
+    fcntl = None
+try:
+    from pilot.er_common import (FEATURE_NAMES, PairText, blocking_keys,
+        disk_free_bytes, iter_tsv, normalize_country, pair_features,
+        peak_rss_bytes, stable_u64)
+except ModuleNotFoundError:  # direct ``python pilot/stream_infer.py`` execution
+    from er_common import (FEATURE_NAMES, PairText, blocking_keys,
+        disk_free_bytes, iter_tsv, normalize_country, pair_features,
+        peak_rss_bytes, stable_u64)
 
 VERSION = 1
 POSTING_CAP = 100
@@ -27,8 +37,38 @@ def db(path, cache=64, synchronous='FULL', journal_mode='WAL'):
     c.execute('PRAGMA wal_autocheckpoint=10000')
     return c
 
-def rss(): return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024
+def rss(): return peak_rss_bytes()
 def work_bytes(path): return sum(p.stat().st_size for p in path.iterdir() if p.is_file())
+
+
+def acquire_run_lock(handle):
+    """Acquire a non-blocking process lock on Unix or Windows."""
+    if fcntl is not None:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            return False
+        handle.seek(0)
+        handle.truncate()
+        handle.write(f'{os.getpid()}\n')
+        handle.flush()
+        os.fsync(handle.fileno())
+        return True
+    if os.name == 'nt':
+        import msvcrt
+        # msvcrt locks a byte range beginning at the current position.  Write
+        # the owner marker before locking because the file must contain a byte.
+        handle.seek(0)
+        handle.truncate()
+        handle.write(f'{os.getpid()}\n')
+        handle.flush()
+        handle.seek(0)
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except (BlockingIOError, OSError):
+            return False
+        return True
+    return True
 
 def parse_args():
     p=argparse.ArgumentParser()
@@ -53,9 +93,8 @@ def main():
     output_dir=a.output_dir or a.work_dir
     output_dir.mkdir(parents=True,exist_ok=True)
     lock_handle=(a.work_dir/'.run.lock').open('a+')
-    try: fcntl.flock(lock_handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
-    except BlockingIOError: raise SystemExit(f'an inference process already holds {a.work_dir}/.run.lock')
-    lock_handle.seek(0); lock_handle.truncate(); lock_handle.write(f'{os.getpid()}\n'); lock_handle.flush(); os.fsync(lock_handle.fileno())
+    if not acquire_run_lock(lock_handle):
+        raise SystemExit(f'an inference process already holds {a.work_dir}/.run.lock')
     paths={n:a.data_root/f'test_source{n}.tsv' for n in (1,2,3)}
     fingerprint={str(p):[p.stat().st_size,p.stat().st_mtime_ns] for p in paths.values()}
     state_path=a.work_dir/'checkpoint.json'; index_path=a.work_dir/'index.sqlite'; result_path=a.work_dir/'results.sqlite'
@@ -76,7 +115,7 @@ def main():
             c.commit()
             state[f'source{src}_rows']=count
             state['peak_work_bytes']=max(state.get('peak_work_bytes',0),work_bytes(a.work_dir)); atomic_json(state_path,state)
-            free=os.statvfs(a.work_dir).f_bavail*os.statvfs(a.work_dir).f_frsize
+            free=disk_free_bytes(a.work_dir)
             if free<20*2**30: raise SystemExit(f'safety stop: free disk below 20 GiB ({free/2**30:.2f} GiB)')
             if count%a.index_batch==0:
                 print(f'indexed S{src} {count:,}; db={index_path.stat().st_size/2**30:.2f} GiB; rss={rss()/2**20:.0f} MiB',flush=True)
@@ -158,7 +197,7 @@ def main():
             if rows % 100 == 0:
                 r.commit()
                 state['query_cursor']=qi+1; state['peak_work_bytes']=max(state.get('peak_work_bytes',0),work_bytes(a.work_dir)); atomic_json(state_path,state)
-                free=os.statvfs(a.work_dir).f_bavail*os.statvfs(a.work_dir).f_frsize
+                free=disk_free_bytes(a.work_dir)
                 if free<20*2**30: raise SystemExit(f'safety stop: free disk below 20 GiB ({free/2**30:.2f} GiB)')
             if rows%250==0: print(f'queries {rows:,}; candidates {cand_n:,}; RSS {rss()/2**20:.0f} MiB',flush=True)
     ix.close(); r.commit()
@@ -171,8 +210,8 @@ def main():
     candidate_count_total=r.execute('SELECT count(*) FROM candidates').fetchone()[0]
     query_count_total=r.execute('SELECT count(*) FROM queries').fetchone()[0]
     output_reserve=2*(candidate_count_total*20+query_count_total*100)
-    work_free=os.statvfs(a.work_dir).f_bavail*os.statvfs(a.work_dir).f_frsize
-    output_free=os.statvfs(output_dir).f_bavail*os.statvfs(output_dir).f_frsize
+    work_free=disk_free_bytes(a.work_dir)
+    output_free=disk_free_bytes(output_dir)
     if work_free<20*2**30:
         raise SystemExit(f'safety stop before TSV generation: work directory needs 20 GiB reserve; have {work_free/2**30:.2f} GiB')
     if output_free<20*2**30+output_reserve:

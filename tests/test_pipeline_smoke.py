@@ -9,7 +9,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from pilot.er_common import FEATURE_NAMES, PairText, blocking_keys, pair_features
+from pilot.er_common import (
+    FEATURE_NAMES,
+    PairText,
+    available_memory_bytes,
+    blocking_keys,
+    current_rss_bytes,
+    disk_free_bytes,
+    pair_features,
+    peak_rss_bytes,
+)
 
 
 class PipelineSmokeTests(unittest.TestCase):
@@ -29,6 +38,11 @@ class PipelineSmokeTests(unittest.TestCase):
         vector = pair_features(left, right)
         self.assertEqual(vector.shape, (len(FEATURE_NAMES),))
         self.assertTrue(bool((vector == vector).all()))
+
+    def test_cross_platform_resource_helpers(self) -> None:
+        self.assertGreater(disk_free_bytes(ROOT), 0)
+        for value in (available_memory_bytes(), current_rss_bytes(), peak_rss_bytes()):
+            self.assertGreaterEqual(value, 0)
 
     def test_inference_cli_help(self) -> None:
         result = subprocess.run(

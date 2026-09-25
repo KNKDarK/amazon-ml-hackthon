@@ -8,11 +8,14 @@ cross-source similarity matrix.  All full-file operations are line-streamed.
 from __future__ import annotations
 
 import csv
+import ctypes
 import hashlib
 import heapq
 import math
 import os
 import re
+import shutil
+import sys
 import threading
 import time
 import unicodedata
@@ -24,6 +27,11 @@ try:
     import numpy as np
 except ImportError as exc:  # pragma: no cover - the pilot environment has NumPy
     raise RuntimeError("NumPy is required for the compact logistic classifier") from exc
+
+try:
+    import resource
+except ImportError:  # Windows has no resource module.
+    resource = None
 
 
 # ---------------------------------------------------------------------------
@@ -464,7 +472,72 @@ def pair_features(left: PairText, right: PairText) -> np.ndarray:
 # Resource monitoring and evaluation
 # ---------------------------------------------------------------------------
 
+def disk_free_bytes(path: Path) -> int:
+    """Return free bytes for a work/output directory on Unix or Windows."""
+    try:
+        return int(shutil.disk_usage(path).free)
+    except OSError:
+        return 0
+
+
+def _windows_memory_status() -> tuple[int, int]:
+    """Return (available physical bytes, peak process working set bytes)."""
+    if os.name != "nt":
+        return 0, 0
+    from ctypes import wintypes
+
+    class MemoryStatusEx(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", wintypes.DWORD),
+            ("dwMemoryLoad", wintypes.DWORD),
+            ("ullTotalPhys", ctypes.c_ulonglong),
+            ("ullAvailPhys", ctypes.c_ulonglong),
+            ("ullTotalPageFile", ctypes.c_ulonglong),
+            ("ullAvailPageFile", ctypes.c_ulonglong),
+            ("ullTotalVirtual", ctypes.c_ulonglong),
+            ("ullAvailVirtual", ctypes.c_ulonglong),
+            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+    class ProcessMemoryCounters(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+        ]
+
+    available = 0
+    status = MemoryStatusEx()
+    status.dwLength = ctypes.sizeof(status)
+    try:
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            available = int(status.ullAvailPhys)
+    except (AttributeError, OSError):
+        pass
+
+    peak = 0
+    counters = ProcessMemoryCounters()
+    counters.cb = ctypes.sizeof(counters)
+    try:
+        process = ctypes.windll.kernel32.GetCurrentProcess()
+        if ctypes.windll.psapi.GetProcessMemoryInfo(process, ctypes.byref(counters), counters.cb):
+            peak = int(counters.PeakWorkingSetSize)
+    except (AttributeError, OSError):
+        pass
+    return available, peak
+
+
 def available_memory_bytes() -> int:
+    if os.name == "nt":
+        available, _ = _windows_memory_status()
+        return available
     try:
         with open("/proc/meminfo", "r", encoding="ascii") as handle:
             for line in handle:
@@ -472,10 +545,21 @@ def available_memory_bytes() -> int:
                     return int(line.split()[1]) * 1024
     except OSError:
         pass
+    if resource is not None:
+        # macOS and other Unix platforms may not expose /proc.
+        try:
+            return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * (
+                1 if sys.platform == "darwin" else 1024
+            )
+        except (AttributeError, OSError, ValueError):
+            pass
     return 0
 
 
 def current_rss_bytes() -> int:
+    if os.name == "nt":
+        _, peak = _windows_memory_status()
+        return peak
     try:
         with open("/proc/self/status", "r", encoding="ascii") as handle:
             for line in handle:
@@ -483,7 +567,28 @@ def current_rss_bytes() -> int:
                     return int(line.split()[1]) * 1024
     except OSError:
         pass
+    if resource is not None:
+        try:
+            return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * (
+                1 if sys.platform == "darwin" else 1024
+            )
+        except (AttributeError, OSError, ValueError):
+            pass
     return 0
+
+
+def peak_rss_bytes() -> int:
+    if os.name == "nt":
+        _, peak = _windows_memory_status()
+        return peak
+    if resource is not None:
+        try:
+            return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * (
+                1 if sys.platform == "darwin" else 1024
+            )
+        except (AttributeError, OSError, ValueError):
+            pass
+    return current_rss_bytes()
 
 
 @dataclass

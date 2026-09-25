@@ -28,7 +28,7 @@ SQLite is used for disk-backed candidates, float32 feature batches, and scores.
 - Block frequency and per-query posting caps bound candidates.
 - Pair features are computed in bounded batches and saved as float32 BLOBs.
 - The classifier is a compact CPU logistic regression.
-- Runtime batches halve when Linux `MemAvailable` drops below 2 GiB.
+- Runtime batches halve when system available memory drops below 2 GiB (Linux `/proc` or Windows Win32 memory status).
 - The script stops after the 10K pilot and writes projections only.
 
 ## Main artifacts

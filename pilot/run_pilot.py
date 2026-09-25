@@ -28,24 +28,46 @@ from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
 import numpy as np
 
-from er_common import (
-    BLOCK_BIT,
-    BLOCK_SCHEMES,
-    FEATURE_NAMES,
-    MemoryMonitor,
-    PairText,
-    address_signature,
-    adapt_batch,
-    available_memory_bytes,
-    blocking_keys,
-    iter_tsv,
-    macro_f05,
-    name_signature,
-    normalize_country,
-    percentile,
-    reservoir_sample_rows,
-    stable_u64,
-)
+try:
+    from pilot.er_common import (
+        BLOCK_BIT,
+        BLOCK_SCHEMES,
+        FEATURE_NAMES,
+        MemoryMonitor,
+        PairText,
+        address_signature,
+        adapt_batch,
+        available_memory_bytes,
+        blocking_keys,
+        disk_free_bytes,
+        iter_tsv,
+        macro_f05,
+        name_signature,
+        normalize_country,
+        percentile,
+        reservoir_sample_rows,
+        stable_u64,
+    )
+except ModuleNotFoundError:  # direct ``python pilot/run_pilot.py`` execution
+    from er_common import (
+        BLOCK_BIT,
+        BLOCK_SCHEMES,
+        FEATURE_NAMES,
+        MemoryMonitor,
+        PairText,
+        address_signature,
+        adapt_batch,
+        available_memory_bytes,
+        blocking_keys,
+        disk_free_bytes,
+        iter_tsv,
+        macro_f05,
+        name_signature,
+        normalize_country,
+        percentile,
+        reservoir_sample_rows,
+        stable_u64,
+    )
 
 
 @dataclass(slots=True)
@@ -1080,7 +1102,7 @@ def build_projection(
     projected_index_postings = int(average_target_keys * test_targets)
     # Conservative SQLite B-tree estimate: 48 logical/physical bytes per posting.
     projected_index_db = projected_index_postings * 48
-    free_bytes = os.statvfs(work_dir).f_bavail * os.statvfs(work_dir).f_frsize
+    free_bytes = disk_free_bytes(work_dir)
     pilot_compute_seconds = float(timer.phases.get("total_wall", sum(timer.phases.values())))
     projection = {
         "method": "linear scaling by S1 query count and S2+S3 target rows; conservative 48 bytes/index posting",

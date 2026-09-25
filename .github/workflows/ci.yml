@@ -16,8 +16,12 @@ concurrency:
 
 jobs:
   test:
-    name: Python smoke and schema checks
-    runs-on: ubuntu-latest
+    name: Python smoke and schema checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     timeout-minutes: 10
     steps:
       - name: Check out repository
