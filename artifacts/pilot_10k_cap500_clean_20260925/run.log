@@ -1,0 +1,108 @@
+[18:48:52] sampling 10,000 rows uniformly from train_source1.tsv
+[18:48:57] sample: {'test': 1500, 'train': 7017, 'validation': 1483}; truth links=34,591 {'S3': 17804, 'S2': 16787}; singletons=561
+[18:48:57] phase sample completed in 5.01s
+[18:48:59] query inverted keys: 86,830 unique postings keys
+[18:48:59] phase build_query_index completed in 1.81s
+[18:50:23] frequency pass train_source2.tsv: 500,000; process RSS=83.6 MiB; MemAvailable=5.29 GiB
+[18:51:46] frequency pass train_source2.tsv: 1,000,000; process RSS=86.8 MiB; MemAvailable=5.33 GiB
+[18:53:08] frequency pass train_source2.tsv: 1,500,000; process RSS=90.0 MiB; MemAvailable=5.41 GiB
+[18:54:29] frequency pass train_source2.tsv: 2,000,000; process RSS=93.4 MiB; MemAvailable=6.58 GiB
+[18:55:51] frequency pass train_source2.tsv: 2,500,000; process RSS=96.5 MiB; MemAvailable=6.47 GiB
+[18:57:11] frequency pass train_source2.tsv: 3,000,000; process RSS=99.8 MiB; MemAvailable=6.51 GiB
+[18:58:31] frequency pass train_source2.tsv: 3,500,000; process RSS=103.3 MiB; MemAvailable=6.45 GiB
+[18:59:52] frequency pass train_source2.tsv: 4,000,000; process RSS=106.5 MiB; MemAvailable=6.36 GiB
+[19:01:12] frequency pass train_source2.tsv: 4,500,000; process RSS=109.8 MiB; MemAvailable=6.36 GiB
+[19:02:32] frequency pass train_source2.tsv: 5,000,000; process RSS=113.0 MiB; MemAvailable=4.87 GiB
+[19:02:38] frequency pass train_source2.tsv: complete ({'rows': 5034616, 'matched_query_rows': 5033180, 'generated_key_postings': 91321202, 'average_keys_per_row': 18.138662809636326, 'seconds': 818.998117825})
+[19:03:56] frequency pass train_source3.tsv: 500,000; process RSS=116.2 MiB; MemAvailable=4.83 GiB
+[19:05:15] frequency pass train_source3.tsv: 1,000,000; process RSS=119.2 MiB; MemAvailable=4.60 GiB
+[19:06:35] frequency pass train_source3.tsv: 1,500,000; process RSS=122.2 MiB; MemAvailable=3.49 GiB
+[19:07:56] frequency pass train_source3.tsv: 2,000,000; process RSS=125.6 MiB; MemAvailable=1.85 GiB
+[19:07:56] WARNING: available RAM is below 2 GiB; forcing GC before continuing
+[19:09:18] frequency pass train_source3.tsv: 2,500,000; process RSS=126.1 MiB; MemAvailable=2.75 GiB
+[19:10:40] frequency pass train_source3.tsv: 3,000,000; process RSS=126.1 MiB; MemAvailable=1.88 GiB
+[19:10:40] WARNING: available RAM is below 2 GiB; forcing GC before continuing
+[19:11:59] frequency pass train_source3.tsv: 3,500,000; process RSS=126.1 MiB; MemAvailable=2.00 GiB
+[19:11:59] WARNING: available RAM is below 2 GiB; forcing GC before continuing
+[19:13:20] frequency pass train_source3.tsv: 4,000,000; process RSS=126.1 MiB; MemAvailable=2.16 GiB
+[19:14:41] frequency pass train_source3.tsv: 4,500,000; process RSS=126.1 MiB; MemAvailable=1.79 GiB
+[19:14:41] WARNING: available RAM is below 2 GiB; forcing GC before continuing
+[19:16:02] frequency pass train_source3.tsv: 5,000,000; process RSS=126.1 MiB; MemAvailable=2.67 GiB
+[19:16:48] frequency pass train_source3.tsv: complete ({'rows': 5285603, 'matched_query_rows': 5283615, 'generated_key_postings': 91525944, 'average_keys_per_row': 17.316083708897548, 'seconds': 849.9447054129996})
+[19:16:49] frequency pass complete in 1670.55s; raw union true-pair recall=0.999798
+[19:16:49] phase measure_block_frequencies completed in 1670.57s
+[19:16:50] selected block cap=500, query posting cap=500; projected postings=2,880,906; expected pair recall=0.933634
+[19:16:50] phase select_block_postings completed in 0.93s
+[19:21:57] candidate pass train_source2.tsv: 1,750,000 targets; batch=10,000; process RSS=216.9 MiB; MemAvailable=3.07 GiB
+[19:23:24] candidate pass train_source2.tsv: 2,250,000 targets; batch=10,000; process RSS=229.5 MiB; MemAvailable=3.07 GiB
+[19:33:00] candidate pass train_source3.tsv: 500,000 targets; batch=10,000; process RSS=286.8 MiB; MemAvailable=3.64 GiB
+[19:33:42] candidate pass train_source3.tsv: 750,000 targets; batch=10,000; process RSS=286.8 MiB; MemAvailable=3.60 GiB
+[19:39:31] candidate pass train_source3.tsv: 2,750,000 targets; batch=10,000; process RSS=286.8 MiB; MemAvailable=3.10 GiB
+[19:46:57] candidate pass train_source3.tsv: 5,250,000 targets; batch=10,000; process RSS=286.8 MiB; MemAvailable=3.26 GiB
+[19:47:05] candidate generation complete: 2,386,317 pairs, recall=0.938973, mean=238.63, size=257.7 MiB
+[19:47:05] phase persist_candidates completed in 1815.28s
+[19:47:25] feature batches: 100,000; process RSS=345.9 MiB; MemAvailable=3.83 GiB
+[19:47:43] feature batches: 200,000; process RSS=345.9 MiB; MemAvailable=3.78 GiB
+[19:48:00] feature batches: 300,000; process RSS=345.9 MiB; MemAvailable=3.87 GiB
+[19:48:18] feature batches: 400,000; process RSS=345.9 MiB; MemAvailable=3.91 GiB
+[19:48:36] feature batches: 500,000; process RSS=345.9 MiB; MemAvailable=4.11 GiB
+[19:48:53] feature batches: 600,000; process RSS=345.9 MiB; MemAvailable=4.36 GiB
+[19:49:11] feature batches: 700,000; process RSS=345.9 MiB; MemAvailable=4.94 GiB
+[19:49:28] feature batches: 800,000; process RSS=345.9 MiB; MemAvailable=4.97 GiB
+[19:49:46] feature batches: 900,000; process RSS=345.9 MiB; MemAvailable=4.86 GiB
+[19:50:04] feature batches: 1,000,000; process RSS=345.9 MiB; MemAvailable=4.89 GiB
+[19:50:22] feature batches: 1,100,000; process RSS=345.9 MiB; MemAvailable=4.83 GiB
+[19:50:39] feature batches: 1,200,000; process RSS=345.9 MiB; MemAvailable=4.78 GiB
+[19:50:57] feature batches: 1,300,000; process RSS=345.9 MiB; MemAvailable=4.87 GiB
+[19:51:15] feature batches: 1,400,000; process RSS=345.9 MiB; MemAvailable=5.18 GiB
+[19:51:32] feature batches: 1,500,000; process RSS=345.9 MiB; MemAvailable=5.41 GiB
+[19:51:50] feature batches: 1,600,000; process RSS=345.9 MiB; MemAvailable=5.49 GiB
+[19:52:08] feature batches: 1,700,000; process RSS=345.9 MiB; MemAvailable=5.53 GiB
+[19:52:25] feature batches: 1,800,000; process RSS=345.9 MiB; MemAvailable=5.54 GiB
+[19:52:43] feature batches: 1,900,000; process RSS=345.9 MiB; MemAvailable=5.38 GiB
+[19:53:00] feature batches: 2,000,000; process RSS=345.9 MiB; MemAvailable=5.29 GiB
+[19:53:18] feature batches: 2,100,000; process RSS=345.9 MiB; MemAvailable=5.25 GiB
+[19:53:35] feature batches: 2,200,000; process RSS=345.9 MiB; MemAvailable=5.17 GiB
+[19:53:53] feature batches: 2,300,000; process RSS=345.9 MiB; MemAvailable=5.17 GiB
+[19:54:09] feature generation complete: 2,386,317 vectors -> 381.0 MiB in 421.5s
+[19:54:09] phase generate_features completed in 423.26s
+[19:54:16] classifier epoch 1/12: weighted loss=0.165537, process RSS=345.9 MiB
+[19:54:16] classifier epoch 2/12: weighted loss=0.087463, process RSS=345.9 MiB
+[19:54:16] classifier epoch 3/12: weighted loss=0.079570, process RSS=345.9 MiB
+[19:54:16] classifier epoch 4/12: weighted loss=0.075953, process RSS=345.9 MiB
+[19:54:16] classifier epoch 5/12: weighted loss=0.073596, process RSS=345.9 MiB
+[19:54:16] classifier epoch 6/12: weighted loss=0.072004, process RSS=345.9 MiB
+[19:54:16] classifier epoch 7/12: weighted loss=0.070899, process RSS=345.9 MiB
+[19:54:16] classifier epoch 8/12: weighted loss=0.069928, process RSS=345.9 MiB
+[19:54:16] classifier epoch 9/12: weighted loss=0.069181, process RSS=345.9 MiB
+[19:54:16] classifier epoch 10/12: weighted loss=0.068581, process RSS=345.9 MiB
+[19:54:16] classifier epoch 11/12: weighted loss=0.068127, process RSS=345.9 MiB
+[19:54:16] classifier epoch 12/12: weighted loss=0.067631, process RSS=345.9 MiB
+[19:54:17] phase train_classifier completed in 7.90s
+[19:54:17] scoring: 100,000; process RSS=345.9 MiB; MemAvailable=5.19 GiB
+[19:54:18] scoring: 200,000; process RSS=345.9 MiB; MemAvailable=5.18 GiB
+[19:54:19] scoring: 300,000; process RSS=345.9 MiB; MemAvailable=5.17 GiB
+[19:54:20] scoring: 400,000; process RSS=345.9 MiB; MemAvailable=5.15 GiB
+[19:54:21] scoring: 500,000; process RSS=345.9 MiB; MemAvailable=5.16 GiB
+[19:54:21] scoring: 600,000; process RSS=345.9 MiB; MemAvailable=5.17 GiB
+[19:54:22] scoring: 700,000; process RSS=345.9 MiB; MemAvailable=5.17 GiB
+[19:54:23] scoring: 800,000; process RSS=345.9 MiB; MemAvailable=5.18 GiB
+[19:54:24] scoring: 900,000; process RSS=345.9 MiB; MemAvailable=5.16 GiB
+[19:54:25] scoring: 1,000,000; process RSS=345.9 MiB; MemAvailable=5.17 GiB
+[19:54:26] scoring: 1,100,000; process RSS=345.9 MiB; MemAvailable=5.16 GiB
+[19:54:26] scoring: 1,200,000; process RSS=345.9 MiB; MemAvailable=5.17 GiB
+[19:54:27] scoring: 1,300,000; process RSS=345.9 MiB; MemAvailable=5.16 GiB
+[19:54:28] scoring: 1,400,000; process RSS=345.9 MiB; MemAvailable=5.16 GiB
+[19:54:29] scoring: 1,500,000; process RSS=345.9 MiB; MemAvailable=5.14 GiB
+[19:54:30] scoring: 1,600,000; process RSS=345.9 MiB; MemAvailable=5.15 GiB
+[19:54:30] scoring: 1,700,000; process RSS=345.9 MiB; MemAvailable=5.15 GiB
+[19:54:31] scoring: 1,800,000; process RSS=345.9 MiB; MemAvailable=5.14 GiB
+[19:54:32] scoring: 1,900,000; process RSS=345.9 MiB; MemAvailable=5.16 GiB
+[19:54:33] scoring: 2,000,000; process RSS=345.9 MiB; MemAvailable=5.15 GiB
+[19:54:34] scoring: 2,100,000; process RSS=345.9 MiB; MemAvailable=5.15 GiB
+[19:54:34] scoring: 2,200,000; process RSS=345.9 MiB; MemAvailable=5.16 GiB
+[19:54:35] scoring: 2,300,000; process RSS=345.9 MiB; MemAvailable=5.15 GiB
+[19:54:36] scoring complete: 2,386,317 rows in 19.2s
+[19:54:36] phase score_candidates completed in 19.21s
+[19:54:46] phase evaluate_and_write completed in 10.17s
+[19:54:46] pilot complete: held-out macro F0.5=0.795995; blocking recall=0.938973; peak RSS=567.4 MiB; total=3954.2s

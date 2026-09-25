@@ -1,0 +1,9 @@
+{
+  "bytes_per_candidate_including_key": 167.42965163471575,
+  "feature_count": 31,
+  "feature_sqlite_bytes": 399540224,
+  "feature_sqlite_logical_page_bytes": 399540224,
+  "float32_bytes_per_row": 124,
+  "rows": 2386317,
+  "seconds": 421.4532506859996
+}

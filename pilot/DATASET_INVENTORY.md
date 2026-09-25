@@ -60,7 +60,8 @@ pipeline must not use a fixed `{US, India}` filter or categorical whitelist.
 Country will be used as an open string and primarily as a partitioning/equality
 feature.
 
-A deterministic 10,000-row diagnostic sample had 34,684 true links (16,847 to
-S2 and 17,837 to S3), 9,443 S1 entities with at least one match, and 557
-singletons. The executable pilot uses its own fixed-seed uniform reservoir; its
-exact sample counts are recorded in `artifacts/pilot_10k/pilot_report.json`.
+The executable fixed-seed reservoir sampled 10,000 Source-1 training rows
+with 34,591 true links (16,787 to S2 and 17,804 to S3), 561 singletons, and
+splits of 7,017 train / 1,483 validation / 1,500 pilot-test queries. Exact
+counts and metrics are recorded in
+`artifacts/pilot_10k_cap500_clean_20260925/pilot_report.json`.

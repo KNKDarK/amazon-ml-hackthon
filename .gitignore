@@ -14,6 +14,20 @@ artifacts/blocking_cap_validation_20260925/targeted_index/*
 !artifacts/blocking_cap_validation_20260925/targeted_index/targeted_index_meta.json
 !artifacts/blocking_cap_validation_20260925/build_targeted_index.py
 !artifacts/blocking_cap_validation_20260925/prepare_targeted_replays.py
+!artifacts/pilot_10k_cap500_clean_20260925/
+artifacts/pilot_10k_cap500_clean_20260925/*
+!artifacts/pilot_10k_cap500_clean_20260925/REPORT.md
+!artifacts/pilot_10k_cap500_clean_20260925/blocking_stats.json
+!artifacts/pilot_10k_cap500_clean_20260925/candidate_stats.json
+!artifacts/pilot_10k_cap500_clean_20260925/evaluation.json
+!artifacts/pilot_10k_cap500_clean_20260925/fine_policy_search.json
+!artifacts/pilot_10k_cap500_clean_20260925/full_scale_projection.json
+!artifacts/pilot_10k_cap500_clean_20260925/model.json
+!artifacts/pilot_10k_cap500_clean_20260925/pilot_features.stats.json
+!artifacts/pilot_10k_cap500_clean_20260925/pilot_report.json
+!artifacts/pilot_10k_cap500_clean_20260925/pilot_scores.stats.json
+!artifacts/pilot_10k_cap500_clean_20260925/production_score_parity.json
+!artifacts/pilot_10k_cap500_clean_20260925/run.log
 output/
 
 # Python/cache/editor files

@@ -1,0 +1,10 @@
+{
+  "comparison": "NumPy pilot scalar scoring versus production batch scoring",
+  "feature_rows": 2386317,
+  "max_abs_probability_delta": 8.924855443570578e-08,
+  "mean_abs_probability_delta": 1.6872542557311249e-09,
+  "threshold": 0.9906,
+  "threshold_mismatch_rows": 0,
+  "top_k": 5,
+  "top_k_mismatch_queries": 0
+}

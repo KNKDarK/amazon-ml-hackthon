@@ -1,0 +1,154 @@
+{
+  "frequency_pass": {
+    "schemes_before_cap": {
+      "address_bigram": {
+        "query_keys": 34589,
+        "query_keys_nonzero": 32758,
+        "query_postings_before_frequency_cap": 8258475,
+        "raw_true_pair_hits_before_cap": 29469,
+        "raw_true_pair_recall_before_cap": 0.8519268017692463
+      },
+      "address_house_postal": {
+        "query_keys": 5445,
+        "query_keys_nonzero": 5257,
+        "query_postings_before_frequency_cap": 3661126,
+        "raw_true_pair_hits_before_cap": 18644,
+        "raw_true_pair_recall_before_cap": 0.5389841288196352
+      },
+      "address_numeric": {
+        "query_keys": 4265,
+        "query_keys_nonzero": 4263,
+        "query_postings_before_frequency_cap": 5070507,
+        "raw_true_pair_hits_before_cap": 20506,
+        "raw_true_pair_recall_before_cap": 0.5928131594923535
+      },
+      "address_token": {
+        "query_keys": 17603,
+        "query_keys_nonzero": 17585,
+        "query_postings_before_frequency_cap": 34068875,
+        "raw_true_pair_hits_before_cap": 32973,
+        "raw_true_pair_recall_before_cap": 0.9532248272672083
+      },
+      "name_exact": {
+        "query_keys": 9639,
+        "query_keys_nonzero": 8844,
+        "query_postings_before_frequency_cap": 277235,
+        "raw_true_pair_hits_before_cap": 16291,
+        "raw_true_pair_recall_before_cap": 0.4709606545055072
+      },
+      "name_prefix": {
+        "query_keys": 5963,
+        "query_keys_nonzero": 5918,
+        "query_postings_before_frequency_cap": 3875137,
+        "raw_true_pair_hits_before_cap": 21621,
+        "raw_true_pair_recall_before_cap": 0.6250469775375097
+      },
+      "name_soundex": {
+        "query_keys": 1902,
+        "query_keys_nonzero": 1902,
+        "query_postings_before_frequency_cap": 26442115,
+        "raw_true_pair_hits_before_cap": 31129,
+        "raw_true_pair_recall_before_cap": 0.8999161631638287
+      },
+      "name_token": {
+        "query_keys": 7424,
+        "query_keys_nonzero": 7424,
+        "query_postings_before_frequency_cap": 16200779,
+        "raw_true_pair_hits_before_cap": 29141,
+        "raw_true_pair_recall_before_cap": 0.8424445665057385
+      }
+    },
+    "sources": {
+      "S2": {
+        "average_keys_per_row": 18.138662809636326,
+        "generated_key_postings": 91321202,
+        "matched_query_rows": 5033180,
+        "rows": 5034616,
+        "seconds": 818.998117825
+      },
+      "S3": {
+        "average_keys_per_row": 17.316083708897548,
+        "generated_key_postings": 91525944,
+        "matched_query_rows": 5283615,
+        "rows": 5285603,
+        "seconds": 849.9447054129996
+      }
+    },
+    "target_rows_scanned": 10320219,
+    "true_pairs": 34591
+  },
+  "index_key_count": 86830,
+  "selection": {
+    "active_query_postings": 58806,
+    "expected_reduction_ratio": 0.9999720859211947,
+    "expected_true_pair_recall": 0.9336344001570783,
+    "expected_true_query_recall": 0.9312204989885368,
+    "max_projected_postings": 5000000,
+    "projected_raw_postings": 2880906,
+    "schemes_after_cap": {
+      "address_bigram": {
+        "active_postings": 893781,
+        "active_query_keys": 28380,
+        "expected_true_pair_hits": 4023,
+        "expected_true_pair_recall": 0.7899077164735911
+      },
+      "address_house_postal": {
+        "active_postings": 257022,
+        "active_query_keys": 2966,
+        "expected_true_pair_hits": 918,
+        "expected_true_pair_recall": 0.180247398389947
+      },
+      "address_numeric": {
+        "active_postings": 69245,
+        "active_query_keys": 1027,
+        "expected_true_pair_hits": 340,
+        "expected_true_pair_recall": 0.06675829569998036
+      },
+      "address_token": {
+        "active_postings": 640227,
+        "active_query_keys": 7684,
+        "expected_true_pair_hits": 2375,
+        "expected_true_pair_recall": 0.46632633025721576
+      },
+      "name_exact": {
+        "active_postings": 169889,
+        "active_query_keys": 8640,
+        "expected_true_pair_hits": 2314,
+        "expected_true_pair_recall": 0.4543491066169252
+      },
+      "name_prefix": {
+        "active_postings": 232663,
+        "active_query_keys": 4390,
+        "expected_true_pair_hits": 1435,
+        "expected_true_pair_recall": 0.28175927743962303
+      },
+      "name_soundex": {
+        "active_postings": 23104,
+        "active_query_keys": 198,
+        "expected_true_pair_hits": 130,
+        "expected_true_pair_recall": 0.025525230708816023
+      },
+      "name_token": {
+        "active_postings": 399318,
+        "active_query_keys": 4000,
+        "expected_true_pair_hits": 1646,
+        "expected_true_pair_recall": 0.3231886903593167
+      }
+    },
+    "selected_block_frequency_cap": 500,
+    "selected_postings_per_query_cap": 500,
+    "selection_objective": "predeclared matched cap; validation labels used only for reporting",
+    "selection_query_count": 1483,
+    "selection_split": "validation",
+    "trials": [
+      {
+        "active_query_postings": 58806,
+        "block_cap": 500,
+        "expected_true_pair_recall": 0.9336344001570783,
+        "expected_true_query_recall": 0.9913854989231874,
+        "projected_raw_postings": 2880906,
+        "query_cap": 500
+      }
+    ]
+  }
+}

@@ -20,8 +20,9 @@ under the [MIT License](LICENSE).
   API, web lookup, or pretrained model was used.
 - **Inputs:** Name, address, and open-valued country strings from challenge
   records only.
-- **Decision policy:** Validation-selected probability threshold and per-query
-  top-K cap, recorded alongside the weights.
+- **Decision policy:** Validation-selected probability threshold `0.9906` and
+  per-query top-K cap `5`, recorded alongside the weights.
+- **Artifact SHA-256:** `cca0e008e75ed83a098ba1d7284ca1d27a47e190ad54cb7c45529d1b8525f573`.
 - **Intended use:** Reproduce this challenge submission and related research on
   the supplied data. It is not a general-purpose identity-verification system.
 

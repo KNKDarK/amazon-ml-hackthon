@@ -957,6 +957,8 @@ def optimize_policy(
     truth: Mapping[int, Set[str]],
     validation_qids: Sequence[int],
 ) -> Tuple[Dict[str, float | int], List[Dict[str, float | int]]]:
+    if not validation_qids:
+        raise ValueError("policy optimization requires validation queries")
     prepared: Dict[int, Tuple[np.ndarray, np.ndarray, int]] = {}
     for qrow in validation_qids:
         rows = sorted(validation.get(qrow, ()), key=lambda item: (-item[1], item[0]))
@@ -969,7 +971,9 @@ def optimize_policy(
             len(actual),
         )
 
-    thresholds = sorted(set([0.0] + np.linspace(0.05, 0.995, 190).round(5).tolist() + [0.999]))
+    coarse = np.linspace(0.05, 0.995, 190).round(5)
+    fine = np.linspace(0.95, 0.9999, 500).round(4)
+    thresholds = sorted(set([0.0, 0.999, *coarse.tolist(), *fine.tolist()]))
     caps = [1, 2, 3, 4, 5, 8, 12, 20, 50, 100, 1_000_000]
     trials: List[Dict[str, float | int]] = []
     best: Dict[str, float | int] | None = None
@@ -988,7 +992,7 @@ def optimize_policy(
                 total_pred += predicted
                 total_true += true_count
             result = {
-                "threshold": threshold,
+                "threshold": float(threshold),
                 "max_predictions_per_query": cap,
                 "macro_f05": macro / len(validation_qids),
                 "micro_precision": total_tp / total_pred if total_pred else 1.0,

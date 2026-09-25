@@ -1,0 +1,19 @@
+{
+  "best": {
+    "macro_f05": 0.7971563175832119,
+    "max_predictions_per_query": 5,
+    "micro_precision": 0.9167100468505986,
+    "micro_recall": 0.6919449901768173,
+    "threshold": 0.9906
+  },
+  "grid_points": 500,
+  "selection_split": "validation",
+  "test_report_only": {
+    "fn": 1586,
+    "fp": 340,
+    "macro_f05": 0.7976264797712518,
+    "micro_precision": 0.9151908206535295,
+    "micro_recall": 0.6981921979067555,
+    "tp": 3669
+  }
+}

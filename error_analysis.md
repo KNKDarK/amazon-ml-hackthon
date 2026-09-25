@@ -1,30 +1,54 @@
-# 10K pilot error analysis
+# Clean 10K cap-500 pilot error analysis
 
-Only the existing labeled training pilot is analyzed. `validation` is the only split used to select policy; `test` is the deterministic held-out pilot split and is descriptive only. The official unlabeled test set was not scored.
+This report replaces the earlier cap-250 analysis. The earlier blocking-cap
+selection included labels from the nominal held-out pilot-test split, and the
+production target feature representation did not exactly match the pilot. Both
+issues were corrected before this run. The current 500/500 cap was predeclared;
+the validation split alone selected model policy, and pilot-test results are
+report-only. The official unlabeled test set has not been scored.
 
-## Pair level
+## Split-level results
 
-| Split | Labeled true pairs | Candidate recall | TP | FP | FN | Macro F0.5 |
-|---|---:|---:|---:|---:|---:|---:|
-| validation | 5,093 | 91.7730% | 3,345 | 189 | 1,748 | 0.796989 |
-| test | 5,255 | 92.3692% | 3,480 | 201 | 1,775 | 0.796470 |
+| Split | Queries | True pairs | Candidate recall | TP | FP | FN | Macro F0.5 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| validation | 1,483 | 5,093 | 93.3634% | 3,522 | 320 | 1,571 | **0.796619** |
+| pilot test | 1,500 | 5,255 | 94.0247% | 3,669 | 340 | 1,586 | **0.797626** |
 
-For the baseline threshold 0.985 and top-K 5, all 11,906 misses decompose into 2,660 true pairs missing from blocking, 8,711 candidate true pairs scoring below threshold, and 535 above threshold but outside top-K. The top-K category is conditional on passing threshold; application keeps the first five eligible IDs by descending score and ID tie-break.
+The validation-selected policy is probability threshold **0.9906** with at most
+**5** predictions per Source-1 entity. Validation micro precision/recall are
+0.916710/0.691537. The held-out pilot-test micro precision/recall are
+0.915191/0.698192.
 
-## Miss slices across all 10,000 queries
+## Miss decomposition
 
-| Slice | True pairs | Missing candidate | Below threshold | Beyond top-K | Predicted |
-|---|---:|---:|---:|---:|---:|
-| source=S3 | 17,804 | 1,444 | 4,506 | 292 | 11,562 |
-| source=S2 | 16,787 | 1,216 | 4,205 | 243 | 11,123 |
-| country=us | 20,675 | 1,296 | 4,117 | 389 | 14,873 |
-| country=india | 13,916 | 1,364 | 4,594 | 146 | 7,812 |
-| split=test | 5,255 | 401 | 1,270 | 104 | 3,480 |
-| split=train | 24,243 | 1,840 | 6,175 | 368 | 15,860 |
-| split=validation | 5,093 | 419 | 1,266 | 63 | 3,345 |
+| Split | Missing from candidates | Candidate present but below threshold | Above threshold but outside top 5 |
+|---|---:|---:|---:|
+| validation | 338 | 1,160 | 73 |
+| pilot test | 314 | 1,145 | 127 |
+| all 10K descriptive | 2,111 | 7,976 | 641 |
 
-This pilot sample has no empty business-name or address values among labeled positive source-1 queries, so those fields cannot explain positive-link misses here. Positive links necessarily come from non-singleton queries; singleton quality is therefore assessed through false-positive query outcomes rather than pair-level false negatives. The 1,500-query held-out pilot-test split has 78 labeled singletons, and 12 received at least one prediction (12 false-positive IDs); its remaining 66 singletons were correctly empty. Neither pilot query names nor addresses are missing (0/10,000 each). The stored detailed JSON has examples for qualitative review. The review shows the threshold rejection channel dominates; lowering it is not justified without a material validation-only macro F0.5 gain because precision is intentionally weighted.
+Across all 10,000 queries, blocking retains 32,480 of 34,591 labeled true pairs
+(**93.8973%**). Of the 10,728 missed true pairs, 2,111 are absent from blocking,
+7,976 have a candidate score below 0.9906, and 641 pass the threshold but fall
+outside the five-prediction cap. Threshold rejection is therefore the largest
+controlled error channel; a lower threshold trades more false merges for recall
+and did not improve validation macro F0.5.
 
-## Controlled policy results already in the baseline
+## Singleton behavior
 
-Validation selected threshold 0.985 / top-K 5 (macro F0.5 0.796989). At the same threshold, top-K ≥8 gives 0.796922; threshold 0.98 / top-K 5 gives 0.796781. These tiny differences do not justify replacing the frozen successful baseline. No test-split metric was used to choose a policy.
+The 10K sample contains 561 true singleton queries. The final policy correctly
+returns an empty list for 387 and falsely predicts at least one target for 174.
+On the validation split, 65 of 90 singletons are correct; on pilot test, 57 of
+78 are correct. This is a material precision risk because singleton false
+positives receive zero entity-level F0.5 credit.
+
+## Resource observations
+
+- Candidate pairs: **2,386,317**, or 238.63 per Source-1 query.
+- Candidate reduction versus all Source-1 × target comparisons: **99.997688%**.
+- Peak process RSS: **567.4 MiB**.
+- Pilot wall time: **3,954.2 seconds**.
+- Feature and score database row counts both exactly match the candidate count.
+
+No leaderboard result or unlabeled-test score was used to choose the threshold,
+top-K cap, blocking cap, features, or model parameters.

@@ -1,0 +1,25 @@
+{
+  "combined_compute_scale": 167.36807236761157,
+  "filesystem_free_bytes_at_report": 84328321024,
+  "method": "linear scaling by S1 query count and S2+S3 target rows; conservative 48 bytes/index posting",
+  "naive_linear_runtime_seconds": 661810.0556712857,
+  "notes": [
+    "Projection is linear and does not claim speedup from a future full index build.",
+    "Pilot feature BLOBs are intentionally uncompressed; full scale should use float16 or compressed Parquet shards and delete scored shards.",
+    "A full index is not built by this pilot; its size is estimated from measured average generated keys."
+  ],
+  "pilot_compute_seconds": 3954.219262426999,
+  "projected_candidate_pairs": 413439920,
+  "projected_candidate_pairs_tsv_bytes": 5002860096,
+  "projected_candidate_sqlite_bytes": 46814192672.61046,
+  "projected_candidates_per_s1": 238.6317,
+  "projected_feature_sqlite_bytes": 69222101777.48476,
+  "projected_full_inverted_index_bytes": 8478475392,
+  "projected_full_inverted_index_postings": 176634904,
+  "projected_working_artifacts_bytes": 129517629938.09521,
+  "query_scale": 173.2544,
+  "target_scale": 0.9660249457884567,
+  "target_working_memory_gib": 4.0,
+  "test_s1_rows": 1732544,
+  "test_s2_s3_rows": 9969589
+}
