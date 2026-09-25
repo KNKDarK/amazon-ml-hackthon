@@ -1,1 +1,2 @@
+# Pilot dependencies; the canonical project file is ../requirements.txt.
 numpy==2.5.3
