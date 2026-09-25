@@ -1,4 +1,101 @@
-# ML Challenge 2026 Problem Statement
+# Business Entity Resolution — ML Challenge 2026
+
+This repository contains a deterministic, disk-backed business entity-resolution
+pipeline for Windows 11, macOS, and Linux. The production path uses only Python
+3.12+ and pinned NumPy; SQLite, CSV, Unicode normalization, process locking, and
+resource checks use the standard library. GitHub Actions tests Ubuntu, Windows,
+and macOS.
+
+- **Public repository:** <https://github.com/KNKDarK/amazon-ml-hackthon>
+- **License:** [MIT](LICENSE)
+- **Model license/card:** [MIT](MODEL_LICENSE.md)
+
+Anyone may clone/pull the repository and contribute through a fork and pull
+request. Direct push access is limited to invited team collaborators. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Cross-platform quick start
+
+```text
+git clone https://github.com/KNKDarK/amazon-ml-hackthon.git
+cd amazon-ml-hackthon
+python -m venv .venv
+```
+
+Activate the environment, then install the audited runtime:
+
+```text
+# Windows PowerShell
+.\.venv\Scripts\python.exe -m pip install -r requirements_lock.txt
+
+# macOS/Linux
+.venv/bin/python -m pip install -r requirements_lock.txt
+```
+
+Platform-specific resource and execution instructions are in
+[WINDOWS_RUNBOOK.md](WINDOWS_RUNBOOK.md), [MACOS_RUNBOOK.md](MACOS_RUNBOOK.md),
+and [LINUX_RUNBOOK.md](LINUX_RUNBOOK.md).
+
+Run all portability, locking, feature-parity, resume-safety, and tiny
+end-to-end checks with:
+
+```text
+python -m compileall -q pilot utils tests tools
+python -m unittest discover -s tests -v
+```
+
+## Pipeline commands
+
+Rebuild the clean, validation-declared 10K cap-500 pilot used for model selection:
+
+```text
+python pilot/run_pilot.py \
+  --data-root dataset \
+  --work-dir artifacts/pilot_10k_cap500_clean \
+  --sample-size 10000 \
+  --selection-cap 500 \
+  --max-projected-postings 5000000
+```
+
+Run or resume the full test pipeline on a local filesystem:
+
+```text
+python -u pilot/stream_infer.py \
+  --data-root dataset/test \
+  --work-dir artifacts/full_inference_cap500 \
+  --output-dir output \
+  --model pilot/frozen_pilot_model.json \
+  --mode full \
+  --queries 0 \
+  --target-sample-rate 1 \
+  --query-stride 1 \
+  --index-batch 5000 \
+  --index-synchronous FULL \
+  --block-cap 500 \
+  --query-posting-cap 500
+```
+
+The checkpoint binds input content hashes, model hash, feature-code hash, mode,
+and blocking profile. Reissue the identical command after an interruption. Use
+a new work directory if any of those inputs change. Keep `.sqlite`, `-wal`, and
+`-shm` files together; do not run on SMB/NFS or an actively synchronized cloud
+folder.
+
+Validate final outputs with the memory-conscious local rule checker:
+
+```text
+python utils/validate_submission.py \
+  --matching output/matching_results.tsv \
+  --candidate output/candidate_pairs.tsv \
+  --test-dir dataset/test \
+  --check-ids
+```
+
+Build the required ZIP after validation and methodology completion:
+
+```text
+python tools/build_submission.py --team-name TEAM_NAME --check-ids
+```
 
 ## Repository contents
 
@@ -6,13 +103,10 @@ The source code, documentation, lightweight validation report, and reproducibili
 
 GitHub Actions runs the Python smoke/schema checks in `.github/workflows/ci.yml` for every pushed branch/tag and for pull requests from any branch.
 
-Install the runtime dependencies with:
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-The project uses only NumPy beyond the Python standard library; `requirements_lock.txt` contains the audited pinned copy. Setup and execution instructions are in [`WINDOWS_RUNBOOK.md`](WINDOWS_RUNBOOK.md) and [`MACOS_RUNBOOK.md`](MACOS_RUNBOOK.md). The Linux systemd launcher is optional; the Python command is portable across all three platforms.
+The runtime is pinned in `requirements_lock.txt`; the project can also be
+installed as a package with `python -m pip install -e .`. The only third-party
+runtime dependency is NumPy. The systemd launcher is an optional Linux-only
+convenience; all supported platforms use the same Python inference command.
 
 ## Business Entity Resolution Challenge
 

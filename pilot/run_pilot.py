@@ -28,6 +28,8 @@ from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
 import numpy as np
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 try:
     from pilot.er_common import (
         BLOCK_BIT,
@@ -35,15 +37,16 @@ try:
         FEATURE_NAMES,
         MemoryMonitor,
         PairText,
-        address_signature,
+        acquire_run_lock,
+        canonical_target_fields,
         adapt_batch,
         available_memory_bytes,
         blocking_keys,
         disk_free_bytes,
         iter_tsv,
         macro_f05,
-        name_signature,
         normalize_country,
+        pair_features,
         percentile,
         reservoir_sample_rows,
         stable_u64,
@@ -55,15 +58,16 @@ except ModuleNotFoundError:  # direct ``python pilot/run_pilot.py`` execution
         FEATURE_NAMES,
         MemoryMonitor,
         PairText,
-        address_signature,
+        acquire_run_lock,
+        canonical_target_fields,
         adapt_batch,
         available_memory_bytes,
         blocking_keys,
         disk_free_bytes,
         iter_tsv,
         macro_f05,
-        name_signature,
         normalize_country,
+        pair_features,
         percentile,
         reservoir_sample_rows,
         stable_u64,
@@ -99,7 +103,7 @@ def log(message: str) -> None:
 
 def write_json(path: Path, value: object) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
+    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
         json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
     temporary.replace(path)
@@ -293,6 +297,7 @@ def select_block_postings(
     true_keys: Mapping[Tuple[int, str], Set[str]],
     truth: Mapping[int, Set[str]],
     max_projected_postings: int,
+    fixed_cap: int | None = None,
 ) -> Tuple[Dict[str, List[Tuple[int, int]]], Dict[int, Set[str]], Dict[str, object]]:
     # Sort each query's postings from most selective (low target frequency) to least.
     by_query: List[List[Tuple[int, str, int]]] = [[] for _ in queries]
@@ -308,15 +313,22 @@ def select_block_postings(
     for postings in by_query:
         postings.sort(key=lambda item: (item[0], item[2], item[1]))
 
-    configurations = [
-        (block_cap, query_cap)
-        for block_cap in (100, 250, 500, 1000, 2000, 5000, 10000)
-        for query_cap in (250, 500, 1000, 2000, 5000, 10000)
-    ]
+    configurations = (
+        [(fixed_cap, fixed_cap)]
+        if fixed_cap is not None
+        else [
+            (block_cap, query_cap)
+            for block_cap in (100, 250, 500, 1000, 2000, 5000, 10000)
+            for query_cap in (250, 500, 1000, 2000, 5000, 10000)
+        ]
+    )
     trials: List[Dict[str, float | int]] = []
     chosen: Tuple[int, int, List[Set[str]], int, int, float, float] | None = None
-    total_true = sum(len(value) for value in truth.values())
-    matched_query_total = sum(bool(value) for value in truth.values())
+    selection_qids = {query.qrow for query in queries if query.split == "validation"}
+    if not selection_qids:
+        raise ValueError("blocking selection requires at least one validation query")
+    total_true = sum(len(truth.get(qrow, set())) for qrow in selection_qids)
+    matched_query_total = sum(bool(truth.get(qrow)) for qrow in selection_qids)
 
     for block_cap, query_cap in configurations:
         retained: List[Set[str]] = []
@@ -337,11 +349,13 @@ def select_block_postings(
             projected += used
         pair_hits = sum(
             1 for pair, keys in true_keys.items()
-            if any(key in retained[pair[0]] for key in keys)
+            if pair[0] in selection_qids
+            and any(key in retained[pair[0]] for key in keys)
         )
         query_hits = len({
             pair[0] for pair, keys in true_keys.items()
-            if any(key in retained[pair[0]] for key in keys)
+            if pair[0] in selection_qids
+            and any(key in retained[pair[0]] for key in keys)
         })
         recall = pair_hits / total_true if total_true else 1.0
         trial = {
@@ -367,11 +381,16 @@ def select_block_postings(
             else:
                 better = recall > chosen_recall
         if better:
-            chosen = (block_cap, query_cap, retained, projected, active_entries, recall, query_hits / len(queries))
+            chosen = (block_cap, query_cap, retained, projected, active_entries, recall, query_hits / len(selection_qids))
 
     if chosen is None:
         raise RuntimeError("No blocking configuration selected")
     block_cap, query_cap, retained, projected, active_entries, recall, query_recall = chosen
+    if fixed_cap is not None and projected > max_projected_postings:
+        raise ValueError(
+            f"fixed cap {fixed_cap}/{fixed_cap} projects {projected:,} raw postings, "
+            f"above the {max_projected_postings:,} limit"
+        )
     active_index: Dict[str, List[Tuple[int, int]]] = defaultdict(list)
     for qrow, keys in enumerate(retained):
         for key in keys:
@@ -387,7 +406,7 @@ def select_block_postings(
         postings = sum(counts[key] for key in keys)
         hits = 0
         for (qrow, _target), pair_keys in true_keys.items():
-            if any(
+            if qrow in selection_qids and any(
                 key in retained[qrow] and BLOCK_BIT[scheme_from_key(key)] == bit
                 for key in pair_keys
             ):
@@ -400,7 +419,13 @@ def select_block_postings(
         }
 
     result: Dict[str, object] = {
-        "selection_objective": "maximize expected true-pair recall subject to projected raw postings cap",
+        "selection_objective": (
+            "predeclared matched cap; validation labels used only for reporting"
+            if fixed_cap is not None
+            else "maximize validation true-pair recall subject to projected raw postings cap"
+        ),
+        "selection_split": "validation",
+        "selection_query_count": len(selection_qids),
         "max_projected_postings": max_projected_postings,
         "selected_block_frequency_cap": block_cap,
         "selected_postings_per_query_cap": query_cap,
@@ -483,13 +508,14 @@ def persist_candidates(
                     pair_masks[qrow] = pair_masks.get(qrow, 0) | bit
             if not pair_masks:
                 continue
-            name_norm = name_signature(row["business_name"])
-            address_norm = address_signature(row["business_address"])
+            name_norm, address_norm, target_country = canonical_target_fields(
+                row["business_name"], row["business_address"], row["country"]
+            )
             target_id = row["entity_id"]
             positive_qrow = target_to_query.get(target_id)
             for qrow, mask in pair_masks.items():
                 batch.append((qrow, target_id, source_number, name_norm, address_norm,
-                              normalize_country(row["country"]), mask))
+                              target_country, mask))
                 source_candidates += 1
                 if qrow == positive_qrow:
                     retrieved_true_masks[(qrow, target_id)] = mask
@@ -669,7 +695,6 @@ def build_feature_database(
 
 
 def pair_features_to_blob(left: PairText, right: PairText) -> bytes:
-    from er_common import pair_features
     return pair_features(left, right).astype("<f4", copy=False).tobytes()
 
 
@@ -1169,7 +1194,7 @@ def write_report(work_dir: Path, payload: Mapping[str, object]) -> None:
 
 ## Resources
 
-- Pilot wall time: **{sum(payload['resources']['phase_seconds'].values()):.1f}s**.
+- Pilot wall time: **{float(payload['resources']['phase_seconds']['total_wall']):.1f}s**.
 - Peak process RSS: **{float(memory['peak_process_rss_mib']):.1f} MiB**.
 - Minimum system `MemAvailable`: **{float(memory['minimum_system_mem_available_mib']):.1f} MiB**.
 - Pilot candidate DB: **{int(candidate['candidate_sqlite_bytes']) / 1024**2:.1f} MiB**.
@@ -1185,25 +1210,50 @@ def write_report(work_dir: Path, payload: Mapping[str, object]) -> None:
 
 See `pilot_report.json` for exact per-phase, per-scheme, and projection details.
 """
-    (work_dir / "REPORT.md").write_text(report, encoding="utf-8")
+    with (work_dir / "REPORT.md").open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(report)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-root", type=Path, default=Path("dataset"))
-    parser.add_argument("--work-dir", type=Path, default=Path("artifacts/pilot_10k"))
+    parser.add_argument("--data-root", type=Path, default=PROJECT_ROOT / "dataset")
+    parser.add_argument("--work-dir", type=Path, default=PROJECT_ROOT / "artifacts/pilot_10k")
     parser.add_argument("--sample-size", type=int, default=10_000)
     parser.add_argument("--max-projected-postings", type=int, default=2_000_000)
+    parser.add_argument(
+        "--selection-cap",
+        type=int,
+        default=None,
+        help="predeclare one matched block/query posting cap; labels remain report-only",
+    )
     parser.add_argument("--negative-per-query", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=10_000)
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    for name in ("sample_size", "max_projected_postings", "negative_per_query", "batch_size"):
+        if getattr(args, name) <= 0:
+            parser.error(f"--{name.replace('_', '-')} must be positive")
+    if args.selection_cap is not None and args.selection_cap <= 0:
+        parser.error("--selection-cap must be positive")
+    return args
 
 
 def main() -> int:
     args = parse_args()
+    args.work_dir = args.work_dir.expanduser().resolve()
+    args.data_root = args.data_root.expanduser().resolve()
+    args.work_dir.mkdir(parents=True, exist_ok=True)
+    lock_handle = (args.work_dir / ".run.lock").open("a+", encoding="utf-8")
+    if not acquire_run_lock(lock_handle):
+        raise SystemExit(f"a pilot process already holds {args.work_dir / '.run.lock'}")
+    try:
+        return run_pipeline(args)
+    finally:
+        lock_handle.close()
+
+
+def run_pipeline(args: argparse.Namespace) -> int:
     if args.sample_size != 10_000:
         log("WARNING: this run differs from the requested 10,000-record pilot")
-    args.work_dir.mkdir(parents=True, exist_ok=True)
     monitor = MemoryMonitor().start()
     timer = PhaseTimer(phases={})
     overall_started = time.perf_counter()
@@ -1225,7 +1275,8 @@ def main() -> int:
 
     started = timer.start()
     active_index, retained_by_query, selection_stats = select_block_postings(
-        queries, key_index, key_counts, true_keys, truth, args.max_projected_postings
+        queries, key_index, key_counts, true_keys, truth,
+        args.max_projected_postings, args.selection_cap,
     )
     del retained_by_query
     timer.finish("select_block_postings", started)

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amazon-ml-hackthon-business-entity-resolution"
+version = "1.0.0"
+description = "Cross-platform business entity-resolution pipeline for ML Challenge 2026"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Amazon ML Hackathon Team" },
+]
+dependencies = [
+  "numpy==2.5.3",
+]
+
+[project.scripts]
+er-infer = "pilot.stream_infer:main"
+er-validate = "utils.validate_submission:main"
+
+[tool.setuptools]
+packages = ["pilot", "utils", "tools"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+pilot = ["*.json"]

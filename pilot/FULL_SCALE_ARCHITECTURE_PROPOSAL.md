@@ -1,111 +1,125 @@
-# Proposed indexed blocking and bounded full-scale architecture
+# Implemented full-scale indexed inference architecture
 
-This is a proposal only. No full-test execution is authorized by this document.
+The production path is implemented in `pilot/stream_infer.py`. It is disk-backed,
+restartable, and bounded in memory. It does not load a source table or construct a
+dense cross-source matrix.
 
 ## 1. Indexed blocking
 
-Use an inverted index over normalized, complementary keys. Each posting is
-stored on disk as `(key, source, entity_number/id, scheme)`; the pilot's exact
-SQLite schema uses a `WITHOUT ROWID` primary key so deduplication does not
-require a second candidate index.
+A SQLite inverted index stores normalized blocking keys and target row numbers.
+The same canonicalization functions are used in the labeled pilot and test
+inference.
 
 ### Name keys
 
 1. Exact order-insensitive normalized name after legal-suffix removal.
 2. First eight characters of that normalized name.
-3. Each significant name token (country-partitioned).
-4. Soundex for ASCII tokens; deterministic native-script prefix fallback for
-   non-Latin scripts.
+3. Each significant name token.
+4. Soundex for ASCII tokens and a deterministic native-script fallback.
 
 ### Address keys
 
-1. Each significant numeric token (ZIP/PIN/house-number evidence).
-2. First house number plus each longer numeric token.
-3. Each canonical address token after US/India abbreviation normalization.
+1. Significant numeric address tokens.
+2. First house number plus longer numeric tokens.
+3. Canonical address tokens after US/India abbreviation normalization.
 4. Canonical adjacent address-token bigrams.
 
-Country is a partition/equality key, not a closed-set model feature. This keeps
-France records eligible while avoiding broad cross-country blocks.
+Country is an open string used in key partitioning and equality features. The
+code does not restrict test records to the training countries, so France remains
+eligible.
 
 ### Frequency control
 
-- Measure each key's posting count before query expansion.
-- Drop blocks above an empirically selected frequency cap.
-- Cap raw postings expanded per S1 query.
-- Prefer the most selective retained keys; maximize labeled true-pair recall
-  subject to a fixed projected candidate budget.
-- Persist every union candidate, so `candidate_pairs.tsv` is exactly the set
-  scored by the classifier.
+- SQLite `keyfreq` stores posting-list sizes.
+- Keys whose frequency exceeds `--block-cap` are excluded.
+- Raw postings expanded for one S1 query are limited by
+  `--query-posting-cap`.
+- More selective keys are expanded first.
+- The persisted candidate table is the exact union scored by the classifier.
 
-The pilot chooses the cap from labeled 10K data. These caps must not be reused
-blindly for test; test-frequency distributions and candidate volume should be
-checked on a small approved test-side slice before a full run.
+The production model is rebuilt with a predeclared 500/500 cap. Its selection
+uses validation labels only; the pilot-test split is report-only.
 
-## 2. Disk-backed layout
-
-For full scale, use country/scheme/key-range partitions rather than one
-unbounded SQLite file. A practical layout is:
+## 2. Disk-backed state
 
 ```text
 work/
-  index/<country>/<scheme>/<key-prefix>.sqlite
-  candidates/<S1-shard>.sqlite
-  features/<S1-shard>-00000.parquet
-  scores/<S1-shard>.sqlite
-  output/
+  checkpoint.json
+  index.sqlite
+  index.sqlite-wal
+  index.sqlite-shm
+  results.sqlite
+  results.sqlite-wal
+  results.sqlite-shm
+  preflight_report.json
+output/
+  matching_results.tsv
+  candidate_pairs.tsv
 ```
 
-SQLite is available in the standard library and is used successfully by the
-pilot. DuckDB is optional; it would need to be installed/pinned and is not
-required. SQLite is preferred here because setup is reproducible and each
-posting lookup is bounded and indexed.
+The index contains `targets`, `postings`, and `keyfreq` tables. The result
+database contains `queries`, `candidates`, `pairs`, and `completed` tables.
+Primary/unique constraints enforce one target per query and deterministic
+pair uniqueness.
 
-Important constraints:
+SQLite uses a bounded page cache, explicit busy timeout, full durability by
+default, and a rollback-journal fallback when a local filesystem cannot provide
+WAL semantics. Network and synchronized filesystems are not supported for live
+work directories.
 
-- Never hold all S1 records, all target records, or all pair features at once.
-- Do not use unrestricted `sklearn.cosine_similarity`.
-- Use `IN` lists of at most a few hundred normalized keys per SQL query.
-- Deduplicate in a disk-backed `(s1_id, target_id)` primary key.
-- Use `journal_mode=OFF`, bounded cache, periodic commits, and explicit
-  `MemAvailable` checks during index construction.
-- Full-scale feature shards should be compressed (`float16`/Parquet or an
-  equivalent compact binary) and may be deleted after scoring. The pilot's
-  SQLite float32 BLOB layout is intentionally simple and auditable, not the
-  final storage-efficiency recommendation.
+## 3. Bounded batch flow
 
-## 3. Batch flow
+1. Verify all input paths, model schema, work-directory state, and resource
+   reserve.
+2. Stream Source 2 and Source 3 once, normalizing target feature text and
+   committing index batches transactionally.
+3. Build target key frequencies after indexing.
+4. Stream Source 1; retrieve a bounded posting set for each query.
+5. Compute the 31 pair features only for that query's candidates.
+6. Apply the frozen logistic model, validation-selected threshold, and top-K
+   policy.
+7. Commit completed query IDs in bounded transactions.
+8. Assert full Source-1 coverage and match/candidate consistency.
+9. Render both TSVs through temporary files and atomic replacement.
 
-1. Stream and normalize one source file at a time; write posting batches.
-2. Build per-partition indexes and run `ANALYZE`/`PRAGMA optimize`.
-3. Retrieve candidates for 2,000-5,000 S1 rows at a time, using bounded key
-   lists and SQL result pages.
-4. Write features for 5,000-20,000 pairs at a time, depending on live RAM.
-5. If `MemAvailable < 2 GiB`, halve retrieval/feature batches, flush, and GC.
-6. Train the compact CPU classifier on a representative, hard-negative sample;
-   do not require all training candidates in RAM.
-7. Score feature shards in order and write final IDs directly to the matching
-   output stream.
-8. Guarantee one output row for every test S1 ID, including empty singleton
-   lists and all France entities.
+The process uses a small amount of memory relative to the data size. Candidate
+IDs and features are never accumulated in a Python list across all queries.
 
-## 4. Resource projection method
+## 4. Restart and integrity rules
 
-After the pilot, compute:
+Checkpoint identity includes:
 
-```text
-query_scale  = 1,732,544 / 10,000
-target_scale = (4,887,273 + 5,082,316) / (5,034,616 + 5,285,603)
-work_scale   = query_scale * target_scale
+- logical input names, byte sizes, and SHA-256 content hashes;
+- model SHA-256;
+- shared feature-code SHA-256;
+- preflight/full mode and bounded-query setting;
+- target sampling, query stride, block cap, and query posting cap.
 
-projected_candidates = pilot_mean_candidates_per_S1 * 1,732,544
-projected_index_postings = pilot_mean_keys_per_target * 9,969,589
-```
+Before trusting state, the program verifies the required database exists and
+contains its required tables. A missing result database cannot be silently
+skipped. A changed model, dataset, feature code, mode, or profile requires a new
+work directory.
 
-Disk is estimated separately for index postings, compact candidate rows,
-compressed feature shards, score rows, and text output. The linear runtime
-estimate is a conservative lower-bound-style extrapolation, not a promise;
-SQLite page cache behavior and target-key distribution can change it.
+A query-free legacy index can be migrated only after its input size/mtime
+fingerprint and profile are verified; stored target fields are canonicalized
+before any query result is produced.
 
-The measured values, pilot wall time, peak RSS, projected candidates, projected
-disk, and whether the 52 GiB free-space margin is sufficient will be reported
-in `artifacts/pilot_10k/REPORT.md` after the background run completes.
+## 5. Output guarantees
+
+- Exact UTF-8-without-BOM TSV headers.
+- LF line endings on every platform.
+- One row for every test Source-1 entity in full mode.
+- Only known Source-2/Source-3 IDs.
+- No duplicate IDs inside a list.
+- Every accepted match exists in the persisted candidate set.
+- Atomic final-file replacement.
+
+The local validator performs the final coverage, duplicate, prefix, ID-existence,
+and candidate-subset checks before packaging.
+
+## 6. Resource guard
+
+The measured 10K validation replay estimated approximately 29 GiB peak working
+storage for cap 500. The production CLI defaults to preserving 20 GiB free and
+stops before a batch or final output can cross that reserve. `--safety-free-gib
+0` exists only for synthetic unit-test fixtures.

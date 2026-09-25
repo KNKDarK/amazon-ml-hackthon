@@ -1,3 +1,4 @@
-# Audited baseline runtime; Python standard library supplies SQLite and CSV.
-# Observed runtime: Python 3.14.7
+# Audited cross-platform runtime; Python standard library supplies SQLite and CSV.
+# CI baseline: Python 3.12 on Ubuntu, Windows, and macOS.
+# Local audit runtime: Python 3.14.7.
 numpy==2.5.3

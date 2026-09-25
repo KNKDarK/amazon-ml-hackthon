@@ -20,4 +20,14 @@ output/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.env
 .DS_Store
+Thumbs.db
+Desktop.ini

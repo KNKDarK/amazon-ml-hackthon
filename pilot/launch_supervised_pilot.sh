@@ -1,59 +1,58 @@
 #!/usr/bin/env bash
-# Persistent launcher for the approved 10K pilot only.
-# The systemd user unit owns this process; closing an interactive terminal does not stop it.
+# Optional Linux launcher for the training-only 10K pilot.
+# The Python process has its own cross-platform work-directory lock; this wrapper
+# adds systemd-friendly status/exit-code reporting.
 
-set -u
+set -euo pipefail
 set -o pipefail
 
-readonly ROOT=/home/knk/ml/student_resource
-readonly DATA_ROOT=/home/knk/ml/student_resource/dataset
-readonly WORK_DIR=/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925
-readonly PILOT_SCRIPT=/home/knk/ml/student_resource/pilot/run_pilot.py
-readonly PYTHON=/usr/bin/python3
-readonly LOCK_FILE=/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/launcher.lock
-readonly PID_FILE=/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/launcher.pid
-readonly EXIT_FILE=/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/exit_code
-readonly STATUS_FILE=/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/launcher_status.json
-readonly SERVICE_ID=student-resource-pilot-10k.service
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+ROOT=${ROOT:-$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)}
+DATA_ROOT=${DATA_ROOT:-"$ROOT/dataset"}
+WORK_DIR=${WORK_DIR:-"$ROOT/artifacts/pilot_10k_supervised"}
+PYTHON=${PYTHON:-"$ROOT/.venv/bin/python"}
+SELECTION_CAP=${SELECTION_CAP:-500}
+MAX_PROJECTED_POSTINGS=${MAX_PROJECTED_POSTINGS:-5000000}
+SERVICE_ID=${SERVICE_ID:-student-resource-pilot-10k.service}
+
+readonly ROOT DATA_ROOT WORK_DIR PYTHON SELECTION_CAP MAX_PROJECTED_POSTINGS SERVICE_ID
+readonly PILOT_SCRIPT="$ROOT/pilot/run_pilot.py"
+readonly LOCK_FILE="$WORK_DIR/launcher.lock"
+readonly PID_FILE="$WORK_DIR/launcher.pid"
+readonly EXIT_FILE="$WORK_DIR/exit_code"
+readonly STATUS_FILE="$WORK_DIR/launcher_status.json"
+
+if [[ ! -x "$PYTHON" ]]; then
+    printf 'Python interpreter is not executable: %s\n' "$PYTHON" >&2
+    exit 64
+fi
+if ! command -v flock >/dev/null 2>&1; then
+    printf 'Required Linux utility not found: flock\n' >&2
+    exit 69
+fi
 
 mkdir -p -- "$WORK_DIR"
-cd "$ROOT" || exit 70
+cd -- "$ROOT"
 
-# All supervised launches share this lock.  A second systemd start or manual
-# invocation exits immediately instead of touching the candidate database.
 exec 9>"$LOCK_FILE"
-if ! /usr/bin/flock -n 9; then
-    printf '%s duplicate pilot refused: lock is already held\n' "$(date --iso-8601=seconds)" >&2
+if ! flock -n 9; then
+    printf 'Duplicate pilot refused: %s is already locked\n' "$LOCK_FILE" >&2
     exit 75
 fi
 
-# Also refuse to overlap the legacy terminal-bound launcher, which did not use
-# this lock.  This check is intentionally done before starting Python.
-legacy_pids=$(/usr/bin/pgrep -f -- 'pilot/run_pilot.py' || true)
-for legacy_pid in $legacy_pids; do
-    legacy_cmdline=""
-    if [ -r "/proc/$legacy_pid/cmdline" ]; then
-        legacy_cmdline=$(/usr/bin/tr '\0' ' ' < "/proc/$legacy_pid/cmdline")
-    fi
-    case "$legacy_cmdline" in
-        *"--work-dir $WORK_DIR"*|*"--work-dir artifacts/pilot_10k_restart_20260925"*)
-            printf '%s duplicate pilot refused: legacy run_pilot.py process is active (pid=%s)\n' \
-                "$(date --iso-8601=seconds)" "$legacy_pid" >&2
-            exit 75
-            ;;
-    esac
-done
+now() {
+    "$PYTHON" -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).isoformat())'
+}
 
 write_status() {
     local state=$1
     local exit_code=$2
     local pilot_pid=$3
     local started_at=$4
-    local ended_at
-    local tmp
-    ended_at=$(date --iso-8601=seconds)
-    tmp="${STATUS_FILE}.tmp.$$"
-    /usr/bin/python3 - "$tmp" "$state" "$exit_code" "$pilot_pid" "$started_at" "$ended_at" "$SERVICE_ID" "${INVOCATION_ID:-}" <<'PY'
+    local ended_at=$5
+    local temporary="${STATUS_FILE}.tmp.$$"
+    "$PYTHON" - "$temporary" "$state" "$exit_code" "$pilot_pid" "$started_at" \
+        "$ended_at" "$SERVICE_ID" "${INVOCATION_ID:-}" "$ROOT" "$DATA_ROOT" "$WORK_DIR" <<'PY'
 import json
 import os
 import sys
@@ -68,9 +67,9 @@ payload = {
     "pilot_pid": int(sys.argv[4]) if sys.argv[4] else None,
     "started_at": sys.argv[5],
     "ended_at": sys.argv[6],
-    "working_directory": "/home/knk/ml/student_resource",
-    "data_root": "/home/knk/ml/student_resource/dataset",
-    "work_dir": "/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925",
+    "working_directory": sys.argv[9],
+    "data_root": sys.argv[10],
+    "work_dir": sys.argv[11],
     "scope": "training-source-1-sample-10000-only",
 }
 temporary = path.with_name(path.name + f".tmp.{os.getpid()}")
@@ -79,18 +78,18 @@ temporary.replace(path)
 PY
 }
 
-started_at=$(date --iso-8601=seconds)
+started_at=$(now)
 printf '%s\n' "$$" > "$PID_FILE"
 write_status starting "" "" "$started_at" "$started_at"
-
 printf '%s starting %s (wrapper_pid=%s invocation_id=%s)\n' \
     "$started_at" "$SERVICE_ID" "$$" "${INVOCATION_ID:-unknown}" >&2
 
-/usr/bin/python3 "$PILOT_SCRIPT" \
+"$PYTHON" -u "$PILOT_SCRIPT" \
     --data-root "$DATA_ROOT" \
     --work-dir "$WORK_DIR" \
     --sample-size 10000 \
-    --max-projected-postings 2000000 \
+    --selection-cap "$SELECTION_CAP" \
+    --max-projected-postings "$MAX_PROJECTED_POSTINGS" \
     --negative-per-query 30 \
     --batch-size 10000 &
 pilot_pid=$!
@@ -100,7 +99,7 @@ set +e
 wait "$pilot_pid"
 rc=$?
 set -e
-ended_at=$(date --iso-8601=seconds)
+ended_at=$(now)
 printf '%s\n' "$rc" > "${EXIT_FILE}.tmp.$$"
 mv -f -- "${EXIT_FILE}.tmp.$$" "$EXIT_FILE"
 write_status exited "$rc" "$pilot_pid" "$started_at" "$ended_at"

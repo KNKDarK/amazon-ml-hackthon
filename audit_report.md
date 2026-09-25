@@ -1,6 +1,11 @@
 # Phase 1–5 audit and readiness report
 
-> **Snapshot note (2026-09-25):** This report records the pre-validation audit state. A subsequent production-cap replay validated caps 100/500/1,000, and `stream_infer.py` now supports final TSV output under `output/`. See `artifacts/blocking_cap_validation_20260925/REPORT.md` for the measured update.
+> **Historical snapshot (2026-09-25):** This file preserves the original
+> pre-validation audit and contains statements that are intentionally superseded
+> (for example, the earlier lack of Git metadata and readiness assessment). The
+> current implementation, portability checks, runbooks, and final-delivery status
+> are tracked in the repository README and runbooks. Do not use the resource
+> projections in this snapshot as final-run measurements.
 
 Audit date: 2026-09-25 (Asia/Kolkata)  
 Project: `student_resource`  

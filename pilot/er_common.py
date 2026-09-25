@@ -33,6 +33,11 @@ try:
 except ImportError:  # Windows has no resource module.
     resource = None
 
+try:
+    import fcntl
+except ImportError:  # Windows uses the msvcrt fallback below.
+    fcntl = None
+
 
 # ---------------------------------------------------------------------------
 # Streaming and deterministic sampling
@@ -42,8 +47,13 @@ CSV_DIALECT = {"delimiter": "\t", "quoting": csv.QUOTE_NONE}
 
 
 def iter_tsv(path: Path) -> Iterator[Dict[str, str]]:
-    """Stream a strict four-column TSV as dictionaries."""
-    with path.open("r", encoding="utf-8", newline="") as handle:
+    """Stream a strict four-column TSV as dictionaries.
+
+    ``utf-8-sig`` accepts normal UTF-8 as well as a single BOM sometimes added
+    by spreadsheet applications on Windows. Output writers in this project emit
+    UTF-8 without a BOM.
+    """
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle, dialect=csv.excel_tab, quoting=csv.QUOTE_NONE)
         expected = ["entity_id", "business_name", "business_address", "country"]
         if reader.fieldnames != expected:
@@ -203,6 +213,16 @@ def name_signature(text: str) -> str:
 def address_signature(text: str) -> str:
     """Order-insensitive normalized address used by exact/token blocking."""
     return " ".join(sorted(normalize_address_tokens(text)))
+
+
+def canonical_target_fields(name: str, address: str, country: str) -> Tuple[str, str, str]:
+    """Return the target representation used by pilot and production features.
+
+    Candidate blocking is still generated from the original row. Once a target
+    is selected, both training and inference must feed the model the exact same
+    normalized representation or prefix/n-gram features drift at inference.
+    """
+    return name_signature(name), address_signature(address), normalize_country(country)
 
 
 def numbers(text: str) -> List[str]:
@@ -480,6 +500,57 @@ def disk_free_bytes(path: Path) -> int:
         return 0
 
 
+def acquire_run_lock(handle) -> bool:
+    """Acquire a non-blocking process lock on a local filesystem.
+
+    The open handle must remain alive for the duration of the protected work.
+    Unsupported platforms fail closed rather than silently allowing concurrent
+    writers.
+    """
+    if fcntl is not None:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            return False
+        handle.seek(0)
+        handle.truncate()
+        handle.write(f"{os.getpid()}\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        return True
+
+    if os.name == "nt":
+        import msvcrt
+
+        # msvcrt locks one byte at the current position. Initialise a stable
+        # byte before contending, then write owner metadata only after the lock
+        # has been acquired; a losing process must not alter the owner's marker.
+        try:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write("0")
+                handle.flush()
+        except OSError:
+            # A competing initialiser may have populated/locked the byte. The
+            # non-blocking lock attempt below is still authoritative.
+            pass
+        handle.seek(0)
+        try:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except (BlockingIOError, OSError):
+            return False
+        handle.seek(1)
+        handle.truncate()
+        handle.write(f"{os.getpid()}\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        return True
+
+    raise RuntimeError(
+        "Process locking is unsupported on this platform; refusing concurrent writes"
+    )
+
+
 def _windows_memory_status() -> tuple[int, int]:
     """Return (available physical bytes, peak process working set bytes)."""
     if os.name != "nt":
@@ -545,14 +616,19 @@ def available_memory_bytes() -> int:
                     return int(line.split()[1]) * 1024
     except OSError:
         pass
-    if resource is not None:
-        # macOS and other Unix platforms may not expose /proc.
-        try:
-            return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * (
-                1 if sys.platform == "darwin" else 1024
-            )
-        except (AttributeError, OSError, ValueError):
-            pass
+
+    # macOS and some BSDs expose live physical-memory availability through
+    # sysconf even though they do not provide Linux /proc/meminfo.
+    try:
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        available_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
+        if page_size > 0 and available_pages >= 0:
+            return page_size * available_pages
+    except (AttributeError, OSError, TypeError, ValueError):
+        pass
+
+    # Unknown systems return zero so adaptive batching stays unchanged rather
+    # than confusing this process's peak RSS with system-wide availability.
     return 0
 
 

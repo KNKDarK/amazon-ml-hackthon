@@ -1,17 +1,18 @@
 [Unit]
 Description=Supervised 10K training-only entity-resolution pilot
-Documentation=file:/home/knk/ml/student_resource/pilot/README.md
+Documentation=https://github.com/KNKDarK/amazon-ml-hackthon
 After=default.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/knk/ml/student_resource
-ExecStart=/home/knk/ml/student_resource/pilot/launch_supervised_pilot.sh
-Environment=PYTHONUNBUFFERED=1
-StandardInput=null
-StandardOutput=append:/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/pilot.stdout.log
-StandardError=append:/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/pilot.stderr.log
+WorkingDirectory=%h/amazon-ml-hackthon
+Environment=PYTHON=%h/amazon-ml-hackthon/.venv/bin/python
+Environment=DATA_ROOT=%h/amazon-ml-hackthon/dataset
+Environment=WORK_DIR=%h/amazon-ml-hackthon/artifacts/pilot_10k_supervised
+Environment=SELECTION_CAP=500
+Environment=MAX_PROJECTED_POSTINGS=5000000
+ExecStart=%h/amazon-ml-hackthon/pilot/launch_supervised_pilot.sh
 SyslogIdentifier=student-resource-pilot-10k
 TimeoutStartSec=infinity
 TimeoutStopSec=120s
@@ -23,3 +24,6 @@ Restart=no
 UMask=0022
 NoNewPrivileges=true
 PrivateTmp=true
+
+[Install]
+WantedBy=default.target

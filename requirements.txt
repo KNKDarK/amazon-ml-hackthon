@@ -1,5 +1,5 @@
 # Production and pilot runtime dependencies.
-# All other imports are provided by the Python 3.12+ standard library
-# (argparse, csv, json, sqlite3, pathlib, fcntl, and related modules).
+# All other imports are provided by the Python 3.12+ standard library.
+# POSIX uses fcntl for process locks; native Windows uses msvcrt.
 # Keep this file in sync with requirements_lock.txt.
 numpy==2.5.3

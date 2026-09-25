@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,11 +19,13 @@ from pilot.er_common import (
     PairText,
     available_memory_bytes,
     blocking_keys,
+    canonical_target_fields,
     current_rss_bytes,
     disk_free_bytes,
     pair_features,
     peak_rss_bytes,
 )
+from pilot.run_pilot import QueryRecord, pair_features_to_blob, select_block_postings
 from pilot.stream_infer import acquire_run_lock
 
 
@@ -46,11 +52,162 @@ class PipelineSmokeTests(unittest.TestCase):
         for value in (available_memory_bytes(), current_rss_bytes(), peak_rss_bytes()):
             self.assertGreaterEqual(value, 0)
 
-    def test_run_lock_acquisition(self) -> None:
+    def test_run_lock_acquisition_and_contention(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             lock_path = Path(directory) / ".run.lock"
-            with lock_path.open("a+") as handle:
-                self.assertTrue(acquire_run_lock(handle))
+            with lock_path.open("a+", encoding="utf-8") as owner:
+                self.assertTrue(acquire_run_lock(owner))
+                with lock_path.open("a+", encoding="utf-8") as contender:
+                    self.assertFalse(acquire_run_lock(contender))
+            with lock_path.open("a+", encoding="utf-8") as after_release:
+                self.assertTrue(acquire_run_lock(after_release))
+
+    def test_module_style_pilot_feature_import(self) -> None:
+        left = PairText.make("Acme Foods", "12 Main Street", "US")
+        right = PairText.make("Acme Food", "12 Main St", "US")
+        self.assertEqual(len(pair_features_to_blob(left, right)), len(FEATURE_NAMES) * 4)
+
+    def test_blocking_selection_uses_validation_labels_only(self) -> None:
+        queries = [
+            QueryRecord(0, "S1-0", "Validation", "", "US", "validation"),
+            QueryRecord(1, "S1-1", "Test", "", "US", "test"),
+        ]
+        validation_key = "1|us|nfull|validation"
+        test_key = "1|us|nfull|pilot_test"
+        key_index = {validation_key: [(0, 1)], test_key: [(1, 1)]}
+        counts = {validation_key: 1_000, test_key: 1}
+        true_keys = {(0, "S2-0"): {validation_key}, (1, "S2-1"): {test_key}}
+        truth = {0: {"S2-0"}, 1: {"S2-1"}}
+        with contextlib.redirect_stdout(io.StringIO()):
+            _active, _retained, report = select_block_postings(
+                queries, key_index, counts, true_keys, truth, 10_000
+            )
+        cap_100 = next(
+            trial for trial in report["trials"]
+            if trial["block_cap"] == 100 and trial["query_cap"] == 250
+        )
+        self.assertEqual(cap_100["expected_true_pair_recall"], 0.0)
+        self.assertEqual(report["selection_split"], "validation")
+
+    def test_tiny_end_to_end_and_missing_result_database(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pipeline données ") as directory:
+            root = Path(directory)
+            data = root / "données test"
+            work = root / "work output"
+            output = root / "final output"
+            data.mkdir()
+            rows = {
+                1: [
+                    "S1-1\tAcme Foods\t12 Main Street\tUS",
+                    "S1-2\tBeta Clinic\t99 Park Road\tIndia",
+                ],
+                2: [
+                    "S2-1\tAcme Food\t12 Main St\tUS",
+                    "S2-2\tBeta Clinic\t99 Park Rd\tIndia",
+                ],
+                3: ["S3-1\tAcme Foods Incorporated\t12 Main Street\tUS"],
+            }
+            for source, lines in rows.items():
+                path = data / f"test_source{source}.tsv"
+                encoding = "utf-8-sig" if source == 1 else "utf-8"
+                with path.open("w", encoding=encoding, newline="\n") as handle:
+                    handle.write("entity_id\tbusiness_name\tbusiness_address\tcountry\n")
+                    handle.write("\n".join(lines) + "\n")
+
+            command = [
+                sys.executable,
+                str(ROOT / "pilot/stream_infer.py"),
+                "--data-root", str(data),
+                "--work-dir", str(work),
+                "--output-dir", str(output),
+                "--model", str(ROOT / "pilot/frozen_pilot_model.json"),
+                "--mode", "full",
+                "--queries", "0",
+                "--index-batch", "2",
+                "--block-cap", "100",
+                "--query-posting-cap", "100",
+                "--safety-free-gib", "0",
+            ]
+            first = subprocess.run(
+                command, cwd=root, check=False, capture_output=True, text=True
+            )
+            self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+            connection = sqlite3.connect(work / "index.sqlite")
+            try:
+                stored_target = connection.execute(
+                    "SELECT name,address,country FROM targets WHERE id='S2-1'"
+                ).fetchone()
+            finally:
+                connection.close()
+            self.assertEqual(
+                stored_target,
+                canonical_target_fields("Acme Food", "12 Main St", "US"),
+            )
+            self.assertEqual(sorted(path.name for path in output.iterdir()),
+                             ["candidate_pairs.tsv", "matching_results.tsv"])
+            for name in ("matching_results.tsv", "candidate_pairs.tsv"):
+                payload = (output / name).read_bytes()
+                self.assertFalse(payload.startswith(b"\xef\xbb\xbf"))
+                self.assertNotIn(b"\r\n", payload)
+                self.assertEqual(len(payload.splitlines()), 3)
+
+            validation = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "utils/validate_submission.py"),
+                    "--matching", str(output / "matching_results.tsv"),
+                    "--candidate", str(output / "candidate_pairs.tsv"),
+                    "--test-dir", str(data),
+                    "--check-ids",
+                ],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(validation.returncode, 0, validation.stdout + validation.stderr)
+            self.assertIn("PASS", validation.stdout)
+
+            documentation = root / "Documentation_template.md"
+            documentation.write_text(
+                "# Synthetic methodology\n\nEnd-to-end fixture documentation.\n",
+                encoding="utf-8",
+            )
+            archive_path = root / "team submission.zip"
+            package = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "tools/build_submission.py"),
+                    "--team-name", "Test Team",
+                    "--documentation", str(documentation),
+                    "--matching", str(output / "matching_results.tsv"),
+                    "--candidate", str(output / "candidate_pairs.tsv"),
+                    "--test-dir", str(data),
+                    "--output-zip", str(archive_path),
+                    "--check-ids",
+                    "--compression-level", "0",
+                ],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(package.returncode, 0, package.stdout + package.stderr)
+            with zipfile.ZipFile(archive_path) as archive:
+                names = set(archive.namelist())
+                self.assertIsNone(archive.testzip())
+            self.assertIn("output/matching_results.tsv", names)
+            self.assertIn("output/candidate_pairs.tsv", names)
+            self.assertIn("code/business_entity_resolution/src/pilot/stream_infer.py", names)
+            self.assertIn("Documentation_template.md", names)
+            self.assertFalse(any(name.startswith(".github/") for name in names))
+
+            (work / "results.sqlite").unlink()
+            unsafe_resume = subprocess.run(
+                command, cwd=root, check=False, capture_output=True, text=True
+            )
+            self.assertNotEqual(unsafe_resume.returncode, 0)
+            self.assertIn("results database", unsafe_resume.stderr)
 
     def test_inference_cli_help(self) -> None:
         result = subprocess.run(

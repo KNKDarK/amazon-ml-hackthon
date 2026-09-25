@@ -7,12 +7,19 @@ resolution task. It is deliberately isolated from any full-test processing.
 
 From the workspace root:
 
-```bash
-python3 pilot/run_pilot.py \
+```text
+python pilot/run_pilot.py \
   --data-root dataset \
-  --work-dir artifacts/pilot_10k \
-  --sample-size 10000
+  --work-dir artifacts/pilot_10k_cap500_clean \
+  --sample-size 10000 \
+  --selection-cap 500 \
+  --max-projected-postings 5000000
 ```
+
+`--selection-cap` predeclares the production 500/500 matched blocking caps. The
+validation split is used to report their recall and select model policy; the
+held-out pilot-test split remains report-only. The process lock prevents two
+pilots from deleting or rebuilding the same work directory concurrently.
 
 The only third-party runtime dependency is NumPy. Python's standard-library
 SQLite is used for disk-backed candidates, float32 feature batches, and scores.
@@ -28,7 +35,7 @@ SQLite is used for disk-backed candidates, float32 feature batches, and scores.
 - Block frequency and per-query posting caps bound candidates.
 - Pair features are computed in bounded batches and saved as float32 BLOBs.
 - The classifier is a compact CPU logistic regression.
-- Runtime batches halve when system available memory drops below 2 GiB (Linux `/proc` or Windows Win32 memory status).
+- Runtime batches halve when system available memory drops below 2 GiB (Linux `/proc`, macOS/BSD `sysconf`, or Windows Win32 memory status).
 - The script stops after the 10K pilot and writes projections only.
 
 ## Main artifacts
@@ -53,4 +60,8 @@ SQLite is used for disk-backed candidates, float32 feature batches, and scores.
 `--output-dir`). Resumable SQLite state, indexes, and logs remain in `--work-dir`;
 the final TSVs are not limited to that work directory. The index writer defaults
 to SQLite `FULL` durability; `--index-synchronous OFF` is intended only for
-bounded local replays.
+bounded local replays. Checkpoint identity includes SHA-256 hashes of all three
+input files, the model, and shared feature code, plus the mode and blocking
+profile. Full mode rejects a nonzero query stride and refuses to render final
+TSVs unless every Source-1 test row is complete and every match is present in
+the candidate set.

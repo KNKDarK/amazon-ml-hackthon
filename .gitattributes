@@ -1,0 +1,23 @@
+# Keep source and data formats deterministic across Windows, macOS, and Linux.
+* text=auto
+
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.fish text eol=lf
+*.service text eol=lf
+*.tsv text eol=lf
+
+# Binary assets must never be line-ending converted.
+*.sqlite binary
+*.db binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
