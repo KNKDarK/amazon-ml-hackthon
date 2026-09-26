@@ -20,7 +20,7 @@ def parse_args():
     p.add_argument(
         "--work-dir",
         type=Path,
-        default=Path("artifacts/full_inference_20260926_sharded16"),
+        default=Path("artifacts/full_inference_20260926_sharded16_sharedindex"),
     )
     p.add_argument("--test-s1", type=Path, default=Path("dataset/test/test_source1.tsv"))
     p.add_argument("--output-dir", type=Path, default=Path("output"))
