@@ -82,7 +82,7 @@ under `pilot/systemd/` is Linux-specific.
 
 ```bash
 mkdir -p artifacts/pilot_10k_supervised
-WORKERS=10 RAM_BUDGET_GIB=0 \
+WORKERS=6 RAM_BUDGET_GIB=0 \
   pilot/launch_supervised_pilot.sh
 ```
 
@@ -95,7 +95,7 @@ python -u pilot/run_pilot.py \
   --sample-size 10000 \
   --selection-cap 500 \
   --negative-per-query 30 \
-  --workers 10 \
+  --workers 6 \
   --ram-budget-gib 0
 ```
 
@@ -113,13 +113,32 @@ pool.
   count and to the RAM ceiling, and the resolved count is logged before any
   heavy allocation. `--workers 1` forces the original serial path, which runs
   in-process with no pool and no pickling.
+- **The default is 6, this machine's physical core count.** It is deliberately
+  not the 12 logical CPUs: SMT siblings share one core's execution units and add
+  no throughput to GIL-bound pure Python, only contention. Measured on a 200 MiB
+  corpus slice (`python tests/bench_parallel.py`, 4,358,974 rows scanned):
+
+  | workers | seconds | rows/s | speedup |
+  |--------:|--------:|-------:|--------:|
+  | 1 | 706.9 | 6,167 | 1.00x |
+  | 2 | 353.6 | 12,327 | 2.00x |
+  | 4 | 203.9 | 21,375 | 3.47x |
+  | 6 | 163.5 | 26,656 | 4.32x |
+  | 8 | 164.9 | 26,435 | 4.29x |
+  | 10 | 162.9 | 26,764 | 4.34x |
+  | 11 | 152.3 | 28,612 | 4.64x |
+
+  Scaling is near-linear to 2 workers, reaches the knee at 6, and is flat from
+  8 onward. Tree RSS stays at 0.44 GiB throughout, so this ceiling is core
+  count and not memory. Raise `WORKERS` only on a machine with more *physical*
+  cores.
 - `--ram-budget-gib 0` (the default) auto-sizes to **60% of `MemAvailable`** at
   startup, so the pool shrinks rather than driving the machine into swap. Pass a
   positive value to pin a hard ceiling. The budget also sizes the SQLite page
   caches, which is why the run now uses far more of the 14 GiB than the previous
   370 MiB peak RSS.
 - Native BLAS/OpenMP runtimes are pinned to one thread per worker, before NumPy
-  is imported. Ten workers each opening a 12-thread math pool would oversubscribe
+  is imported. Six workers each opening a 12-thread math pool would oversubscribe
   the CPU. `pilot/thread_env.py` sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
   `MKL_NUM_THREADS`, `NUMEXPR_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS`,
   `BLIS_NUM_THREADS`, and `GOTO_NUM_THREADS`, leaving any value you already

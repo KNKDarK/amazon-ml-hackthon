@@ -1257,9 +1257,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--workers",
         type=int,
-        default=10,
+        default=6,
         help="worker processes for the two full-corpus blocking passes; "
-             "clamped to the CPU and RAM ceilings. Use 1 to force the serial path.",
+             "clamped to the CPU and RAM ceilings. Use 1 to force the serial path. "
+             "6 matches the physical core count of the reference machine (12 logical "
+             "with SMT); past the physical core count extra workers only contend, "
+             "since the pass is GIL-bound pure Python.",
     )
     parser.add_argument(
         "--ram-budget-gib",

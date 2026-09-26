@@ -30,7 +30,12 @@ SERVICE_ID=${SERVICE_ID:-student-resource-pilot-10k.service}
 # Python and GIL-bound, so this is process parallelism, not thread parallelism.
 # run_pipeline clamps the request to the CPU and RAM ceilings; 1 forces the
 # serial path. RAM_BUDGET_GIB=0 auto-sizes to 60% of MemAvailable.
-WORKERS=${WORKERS:-10}
+#
+# 6 is the physical core count of this machine (12 logical with SMT). Measured on
+# a 200 MiB corpus slice: 6 workers reached 4.32x and 8/10/11 stayed flat at
+# ~4.3x, because SMT siblings add no throughput to GIL-bound pure Python. Raise
+# WORKERS on a machine with more physical cores.
+WORKERS=${WORKERS:-6}
 RAM_BUDGET_GIB=${RAM_BUDGET_GIB:-0}
 NATIVE_THREADS=${NATIVE_THREADS:-1}
 

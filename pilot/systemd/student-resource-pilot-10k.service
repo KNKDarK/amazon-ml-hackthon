@@ -22,7 +22,9 @@ Environment=SELECTION_CAP=500
 Environment=MAX_PROJECTED_POSTINGS=5000000
 # Worker processes for the full-corpus blocking passes. Clamped at runtime to
 # the CPU and RAM ceilings; set WORKERS=1 for the serial path.
-Environment=WORKERS=10
+# 6 = physical core count here (12 logical with SMT). Scaling flattens past the
+# physical core count, so raise this only on machines with more physical cores.
+Environment=WORKERS=6
 # 0 auto-sizes the pool to 60% of MemAvailable at startup.
 Environment=RAM_BUDGET_GIB=0
 # One native BLAS/OpenMP thread per worker; the pool already saturates the CPU.
