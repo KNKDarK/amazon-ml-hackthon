@@ -493,34 +493,6 @@ def persist_candidates(
     for source_number, name in ((2, "train_source2.tsv"), (3, "train_source3.tsv")):
         source_started = time.perf_counter()
         source_rows = source_candidates = source_matches = 0
-<<<<<<< HEAD
-        for row in iter_tsv(data_root / "train" / name):
-            source_rows += 1
-            total_rows += 1
-            keys = blocking_keys(row["business_name"], row["business_address"], row["country"])
-            total_generated_keys += len(keys)
-            pair_masks: Dict[int, int] = {}
-            for key in keys:
-                entries = active_index.get(key)
-                if not entries:
-                    continue
-                source_matches += len(entries)
-                total_posting_matches += len(entries)
-                for qrow, bit in entries:
-                    pair_masks[qrow] = pair_masks.get(qrow, 0) | bit
-            if not pair_masks:
-                continue
-            name_norm = name_signature(row["business_name"])
-            address_norm = address_signature(row["business_address"])
-            target_id = row["entity_id"]
-            positive_qrow = target_to_query.get(target_id)
-            for qrow, mask in pair_masks.items():
-                batch.append((qrow, target_id, source_number, name_norm, address_norm,
-                              normalize_country(row["country"]), mask))
-                source_candidates += 1
-                if qrow == positive_qrow:
-                    retrieved_true_masks[(qrow, target_id)] = mask
-=======
         # Sources are still processed S2 then S3 and ranges are merged in
         # ascending order, so the last-writer-wins behaviour of
         # retrieved_true_masks is identical to the serial implementation.
@@ -545,7 +517,6 @@ def persist_candidates(
             total_generated_keys += chunk_keys
             source_candidates += len(records)
             batch.extend(records)
->>>>>>> 5f56dee (Process-parallel full-corpus blocking passes)
             if len(batch) >= batch_size:
                 connection.executemany(insert_sql, batch)
                 inserted_since_commit += len(batch)
@@ -1243,7 +1214,7 @@ See `pilot_report.json` for exact per-phase, per-scheme, and projection details.
     (work_dir / "REPORT.md").write_text(report, encoding="utf-8")
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, default=Path("dataset"))
     parser.add_argument("--work-dir", type=Path, default=Path("artifacts/pilot_10k"))
@@ -1251,9 +1222,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-projected-postings", type=int, default=2_000_000)
     parser.add_argument("--negative-per-query", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=10_000)
-<<<<<<< HEAD
-    return parser.parse_args()
-=======
     parser.add_argument(
         "--workers",
         type=int,
@@ -1278,10 +1246,7 @@ def parse_args() -> argparse.Namespace:
         parser.error("--workers must be positive")
     if args.ram_budget_gib < 0:
         parser.error("--ram-budget-gib must be zero (auto) or positive")
-    if args.selection_cap is not None and args.selection_cap <= 0:
-        parser.error("--selection-cap must be positive")
     return args
->>>>>>> 5f56dee (Process-parallel full-corpus blocking passes)
 
 
 def main() -> int:

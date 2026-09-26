@@ -197,6 +197,11 @@ def address_signature(text: str) -> str:
     return " ".join(sorted(normalize_address_tokens(text)))
 
 
+def canonical_target_fields(name: str, address: str, country: str) -> Tuple[str, str, str]:
+    """Return canonicalized target fields used by candidate generation."""
+    return name_signature(name), address_signature(address), normalize_country(country)
+
+
 def numbers(text: str) -> List[str]:
     return [token.lstrip("0") or "0" for token in DIGIT_RE.findall(ascii_fold(text))]
 
