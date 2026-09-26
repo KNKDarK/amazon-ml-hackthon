@@ -157,12 +157,20 @@ def validate_id_list_file(
             seen.add(s1)
 
             ids = rest.rstrip("\r\n").split(",") if rest.strip() else []
-            if not ids:
+            id_set = set(ids)
+            if not id_set:
+                # An empty candidate list used to skip the subset check, which
+                # silently tolerated the worst case: matched IDs present with no
+                # candidate to back them. Check it before bailing out.
                 empties += 1
+                if reference_mapping is not None:
+                    if subset_offenders is None:
+                        raise ValueError("subset_offenders is required with reference_mapping")
+                    if reference_mapping.get(s1, set()):
+                        subset_offenders.add(s1)
                 continue
             if len(ids) != len(set(ids)):
                 intra_dupes.add(s1)
-            id_set = set(ids)
             if retain_mapping:
                 mapping[s1] = id_set
             if reference_mapping is not None and reference_mapping.get(s1, set()) - id_set:
@@ -288,6 +296,131 @@ def validate(matching_path, candidate_path, test_dir, check_ids=False):
     return errors, warnings
 
 
+def read_predictions(path):
+    """Return ``{s1_entity_id: [matched ids]}`` from a matching_results-style TSV.
+
+    Same schema as the published train_ground_truth.tsv, so the same reader
+    serves both the prediction file and the truth file.
+    """
+    preds = {}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        header = f.readline().rstrip("\r\n").split(DELIM)
+        if header[:1] != ["source1_entity_id"]:
+            raise ValueError(f"{path}: unexpected header {header!r}")
+        for lineno, line in enumerate(f, start=2):
+            line = line.rstrip("\r\n")
+            if not line:
+                continue
+            parts = line.split(DELIM)
+            s1_id = parts[0].strip()
+            rest = parts[1] if len(parts) > 1 else ""
+            preds[s1_id] = [x for x in rest.split(",") if x]
+    return preds
+
+
+def score_against_truth(matching_path, truth_path):
+    """Compute macro F0.5 and supporting counts against a labelled truth file.
+
+    The metric mirrors ``pilot.er_common.macro_f05`` exactly, so a held-out
+    training score and a training-time report are directly comparable:
+
+    * per query, F0.5 = 1.25 * P * R / (0.25 * P + R), and 0.0 when there is
+      no true match to retrieve (tp == 0);
+    * a query whose truth is empty scores 1.0 if nothing was predicted and
+      0.0 if anything was, so predicting a match for a singleton is penalised;
+    * the headline number is the unweighted mean over queries (macro).
+
+    Returns a dict, or raises ValueError when the truth file is unusable.
+    """
+    truth = read_predictions(truth_path)
+    preds = read_predictions(matching_path)
+
+    scores = []
+    tp = fp = fn = 0
+    missing_from_truth = 0
+    for qid, actual_ids in truth.items():
+        actual = set(actual_ids)
+        predicted = set(preds.get(qid, ()))
+        if qid not in preds:
+            missing_from_truth += 1
+        inter = len(actual & predicted)
+        p_fp = len(predicted - actual)
+        p_fn = len(actual - predicted)
+        tp += inter
+        fp += p_fp
+        fn += p_fn
+        if not actual:
+            scores.append(1.0 if not predicted else 0.0)
+            continue
+        if inter == 0:
+            scores.append(0.0)
+        else:
+            precision = inter / (inter + p_fp)
+            recall = inter / (inter + p_fn)
+            scores.append(
+                1.25 * precision * recall / (0.25 * precision + recall)
+                if precision + recall else 0.0
+            )
+
+    total_pred = sum(len(set(preds.get(q, ()))) for q in truth)
+    return {
+        "macro_f05": sum(scores) / len(scores) if scores else 0.0,
+        "micro_precision": tp / total_pred if total_pred else 1.0,
+        "micro_recall": tp / (tp + fn) if (tp + fn) else 0.0,
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "queries_scored": len(truth),
+        "queries_with_truth": sum(1 for v in truth.values() if v),
+        "queries_predicted_any": sum(1 for v in preds.values() if v),
+        "predicted_ids_not_in_truth": sum(1 for q in preds if q not in truth),
+        "truth_rows_absent_from_predictions": missing_from_truth,
+    }
+
+
+def report_score(matching_path, truth_path):
+    """Print a score block, or explain why no score can be produced."""
+    if not truth_path:
+        print()
+        print("Score: not requested. Pass --ground-truth <labelled file> to compute "
+              "macro F0.5 (the test\n  set has no published ground truth, so a "
+              "leaderboard score cannot be computed\n  locally without one).")
+        return None
+    print()
+    print("Score")
+    truth = Path(truth_path)
+    if not truth.is_file():
+        print(f"  NOT COMPUTED — no ground truth file at {truth}.")
+        print(
+            "  The competition does not release ground truth for the test set, so a\n"
+            "  leaderboard score for output/matching_results.tsv cannot be computed\n"
+            "  locally. Pass --ground-truth <labelled file> to score a held-out split;\n"
+            "  the file uses the same two-column schema as train_ground_truth.tsv."
+        )
+        return None
+    try:
+        s = score_against_truth(matching_path, truth)
+    except (OSError, ValueError, UnicodeDecodeError) as exc:
+        print(f"  NOT COMPUTED — could not read the ground truth: {exc}")
+        return None
+    print(f"  ground truth : {truth}")
+    print(f"  metric       : macro F0.5 (unweighted mean of per-query F0.5)")
+    print()
+    print(f"  MACRO F0.5        : {s['macro_f05']:.6f}")
+    print(f"  micro precision   : {s['micro_precision']:.6f}")
+    print(f"  micro recall      : {s['micro_recall']:.6f}")
+    print(f"  TP / FP / FN      : {s['tp']:,} / {s['fp']:,} / {s['fn']:,}")
+    print(f"  queries scored    : {s['queries_scored']:,} "
+          f"({s['queries_with_truth']:,} with at least one true match)")
+    print(f"  queries predicted : {s['queries_predicted_any']:,} non-empty")
+    if s["predicted_ids_not_in_truth"] or s["truth_rows_absent_from_predictions"]:
+        print(f"  NOTE: {s['predicted_ids_not_in_truth']:,} predicted S1 rows are "
+              f"absent from the truth file and "
+              f"{s['truth_rows_absent_from_predictions']:,} truth rows have no "
+              f"prediction row; both are outside the scored set.")
+    return s
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Validate ML Challenge 2026 submission output files before submitting."
@@ -320,7 +453,34 @@ def main():
         "GB on the full test set). Candidate rows are streamed without retaining "
         "the full candidate mapping.",
     )
+    parser.add_argument(
+        "--ground-truth",
+        "-g",
+        default=None,
+        help="Optional labelled file with the same two-column schema as "
+        "train_ground_truth.tsv. When given, macro F0.5 and supporting counts are "
+        "computed and printed. The test set has no published ground truth, so a "
+        "leaderboard score cannot be produced locally without this.",
+    )
+    parser.add_argument(
+        "--score-only",
+        action="store_true",
+        help="Skip the submission format checks and only compute the score against "
+        "--ground-truth. Use this to score a held-out split, whose S1 IDs are "
+        "training IDs and would otherwise fail the test-set format rules.",
+    )
     args = parser.parse_args()
+
+    if args.score_only:
+        # Scoring a labelled split (typically held-out training data) is a
+        # separate concern from submission format: those rows carry train S1
+        # IDs, which the test-set format rules would rightly reject. Skip the
+        # format gate and report the metric only.
+        if not args.ground_truth:
+            print("--score-only needs --ground-truth <labelled file>.")
+            return 1
+        scored = report_score(args.matching, args.ground_truth)
+        return 0 if scored is not None else 1
 
     # candidate_pairs.tsv is optional; default to the conventional path and let
     # validate() skip (with a warning) if the file isn't there.
@@ -359,6 +519,7 @@ def main():
             print(f"  {i}. {error}")
         return 1
     print("PASS — no blocking issues found. Safe to submit.")
+    report_score(args.matching, args.ground_truth)
     return 0
 
 

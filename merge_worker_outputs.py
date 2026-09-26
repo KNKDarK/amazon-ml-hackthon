@@ -24,6 +24,13 @@ def parse_args():
     )
     p.add_argument("--test-s1", type=Path, default=Path("dataset/test/test_source1.tsv"))
     p.add_argument("--output-dir", type=Path, default=Path("output"))
+    p.add_argument(
+        "--expect-workers",
+        type=int,
+        default=0,
+        help="required number of run_worker_* directories. 0 infers the count "
+             "from what is on disk, which cannot detect a worker that never ran.",
+    )
     return p.parse_args()
 
 
@@ -39,9 +46,200 @@ def iter_s1_ids(path: Path):
             yield line.split("\t", 1)[0].strip()
 
 
+def worker_index(worker_dir: Path) -> int:
+    """Return the numeric suffix of a ``run_worker_<n>`` directory name."""
+    tail = worker_dir.name.rsplit("_", 1)[-1]
+    if not tail.isdigit():
+        raise SystemExit(f"Cannot read a worker number from {worker_dir.name!r}")
+    return int(tail)
+
+
+def discover_worker_dirs(work_dir: Path, expect_workers: int) -> list[Path]:
+    """Return every shard directory, failing if any is missing or incomplete.
+
+    A worker directory without a readable ``results.sqlite`` used to be skipped
+    silently, which produced a submission with blank rows for that whole shard
+    and no error anywhere. Every expected shard must now be present.
+    """
+    if not work_dir.is_dir():
+        raise SystemExit(f"Shard work directory does not exist: {work_dir}")
+
+    found: dict[int, Path] = {}
+    for worker_dir in sorted(work_dir.glob("run_worker_*")):
+        if not worker_dir.is_dir():
+            continue
+        index = worker_index(worker_dir)
+        if index in found:
+            raise SystemExit(
+                f"Two shard directories claim worker {index}: "
+                f"{found[index].name} and {worker_dir.name}"
+            )
+        found[index] = worker_dir
+
+    if not found:
+        raise SystemExit(f"No run_worker_* directories found under {work_dir}")
+
+    if expect_workers and len(found) != expect_workers:
+        expected = set(range(expect_workers))
+        missing = sorted(expected - set(found))
+        extra = sorted(set(found) - expected)
+        raise SystemExit(
+            f"Expected {expect_workers} shard(s) under {work_dir}, found "
+            f"{len(found)}. Missing worker index(es): {missing or 'none'}; "
+            f"unexpected: {extra or 'none'}. Refusing to write a partial submission."
+        )
+
+    # 0..n-1 with no gaps, so offsets and directory numbering agree.
+    gaps = sorted(set(range(len(found))) - set(found))
+    if gaps:
+        raise SystemExit(
+            f"Shard numbering under {work_dir} is not contiguous from 0; "
+            f"missing worker index(es): {gaps}"
+        )
+
+    incomplete = [
+        d.name for _, d in sorted(found.items())
+        if not (d / "results.sqlite").is_file()
+        or (d / "results.sqlite").stat().st_size == 0
+    ]
+    if incomplete:
+        raise SystemExit(
+            f"Shard(s) with no usable results.sqlite: {incomplete}. A worker most "
+            f"likely crashed or was never launched; refusing to write a partial "
+            f"submission."
+        )
+    return [found[i] for i in sorted(found)]
+
+
+def verify_shard_plan(worker_dirs: list[Path], s1_count: int) -> list[sqlite3.Connection]:
+    """Open each shard read-only after checking the shards cannot overlap.
+
+    Guards against two workers claiming the same ``query_offset`` (which would
+    duplicate every S1 row they both processed) and against shards that do not
+    jointly cover the file. Runs before any output is written.
+    """
+    import json
+
+    offsets: dict[int, str] = {}
+    strides: set[int] = set()
+    for worker_dir in worker_dirs:
+        checkpoint = worker_dir / "checkpoint.json"
+        if not checkpoint.is_file():
+            raise SystemExit(f"Shard {worker_dir.name} has no checkpoint.json")
+        try:
+            state = json.loads(checkpoint.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"Shard {worker_dir.name} has an unreadable checkpoint: {exc}") from exc
+        profile = state.get("identity", {}).get("profile") or state.get("profile") or {}
+        offset, stride = profile.get("query_offset"), profile.get("query_stride")
+        if offset is None or stride is None:
+            raise SystemExit(
+                f"Shard {worker_dir.name} checkpoint records no query_offset/"
+                f"query_stride; cannot prove the shards are disjoint"
+            )
+        if offset in offsets:
+            raise SystemExit(
+                f"Shards {offsets[offset]} and {worker_dir.name} both use "
+                f"query_offset={offset}; their S1 rows would be duplicated in the "
+                f"submission"
+            )
+        offsets[offset] = worker_dir.name
+        strides.add(stride)
+
+    if len(strides) != 1:
+        raise SystemExit(f"Shards disagree on query_stride: {sorted(strides)}")
+    stride = strides.pop()
+    if sorted(offsets) != list(range(stride)):
+        raise SystemExit(
+            f"Shard offsets {sorted(offsets)} do not cover 0..{stride - 1} exactly; "
+            f"the shards cannot partition the S1 file"
+        )
+
+    # Ownership is exact by construction: every qi has precisely one owner.
+    expected = [0] * stride
+    for offset in range(stride):
+        expected[offset] = len(range(offset, s1_count, stride))
+    print(
+        f"Shard plan OK: {len(worker_dirs)} worker(s), stride={stride}, "
+        f"offsets={sorted(offsets)}, S1 rows={s1_count:,}; "
+        f"per-shard rows={[expected[o] for o in sorted(offsets)]}"
+    )
+
+    offset_of = {name: offset for offset, name in offsets.items()}
+    return [(offset_of[d.name], stride) for d in worker_dirs]
+
+
+def verify_qid_coverage(
+    worker_dirs: list[Path],
+    plan: list[tuple[int, int]],
+    s1_count: int,
+) -> None:
+    """Require the shards to cover every S1 row exactly once, with no overlap.
+
+    Done as SQL aggregates rather than by materialising every qid, so the check
+    stays memory-safe at 1.7M rows.
+
+    For a shard with offset ``o`` and stride ``n`` the owned rows are exactly
+    ``{qi+1 : qi % n == o}``. If every row it holds is in range, has the right
+    residue, is unique (qid is the primary key) and the count matches the size
+    of that residue class, then its rows are *exactly* that class. Distinct
+    offsets are distinct residue classes, so the shards are disjoint and their
+    union is the whole file.
+    """
+    total = 0
+    for worker_dir, (offset, stride) in zip(worker_dirs, plan):
+        conn = sqlite3.connect(
+            f"file:{(worker_dir / 'results.sqlite').resolve()}?mode=ro", uri=True
+        )
+        try:
+            conn.execute("PRAGMA query_only=ON")
+            count, lo, hi = conn.execute(
+                "SELECT count(*), min(qid), max(qid) FROM queries"
+            ).fetchone()
+            count = int(count or 0)
+            expected = len(range(offset, s1_count, stride))
+            if count != expected:
+                raise SystemExit(
+                    f"{worker_dir.name} (query_offset={offset}) holds {count:,} rows "
+                    f"but should hold {expected:,}; it is incomplete, or was run "
+                    f"with a different --query-stride"
+                )
+            if count:
+                stray = conn.execute(
+                    "SELECT count(*) FROM queries WHERE qid < 1 OR qid > ? "
+                    "OR (qid - 1) % ? != ?",
+                    (s1_count, stride, offset),
+                ).fetchone()[0]
+                if stray:
+                    raise SystemExit(
+                        f"{worker_dir.name} (query_offset={offset}) contains "
+                        f"{int(stray):,} row(s) outside its shard (qid must satisfy "
+                        f"(qid-1) % {stride} == {offset}); it would duplicate or "
+                        f"miss S1 rows"
+                    )
+                if (int(lo) - 1) % stride != offset or (int(hi) - 1) % stride != offset:
+                    raise SystemExit(
+                        f"{worker_dir.name} (query_offset={offset}) spans qid "
+                        f"{int(lo)}..{int(hi)}, which is not a single residue "
+                        f"class mod {stride}"
+                    )
+            total += count
+        finally:
+            conn.close()
+    if total != s1_count:
+        raise SystemExit(
+            f"Shards hold {total:,} rows in total but the S1 file has {s1_count:,}; "
+            f"refusing to write a partial submission"
+        )
+    print(
+        f"Coverage OK: {total:,} S1 rows partitioned across {len(worker_dirs)} shard(s), "
+        f"each row in exactly one shard."
+    )
+
+
 def open_worker_dbs(work_dir: Path):
     dbs = []
-    for worker_dir in sorted(work_dir.glob("run_worker_*"), key=lambda p: int(p.name.split("_")[-1])):
+    for worker_dir in sorted(work_dir.glob("run_worker_*"), key=worker_index):
         db_path = worker_dir / "results.sqlite"
         if not db_path.exists():
             continue
@@ -115,8 +313,23 @@ def write_submission(
     output_path: Path,
     table: str,
     header: str,
+    dbs: list[Path] | None = None,
 ):
-    dbs = open_worker_dbs(work_dir)
+    # Each call opens and closes its own read-only handles: write_submission
+    # closes what it opens, so a caller must never share connections with it.
+    targets = dbs if dbs is not None else list(work_dir.glob("run_worker_*"))
+    handles = []
+    for worker_dir in sorted(targets, key=worker_index):
+        if not worker_dir.is_dir():
+            continue
+        conn = sqlite3.connect(
+            f"file:{(worker_dir / 'results.sqlite').resolve()}?mode=ro", uri=True
+        )
+        conn.execute("PRAGMA query_only=ON")
+        handles.append((worker_dir.name, conn))
+    if not handles:
+        raise SystemExit(f"No worker results.sqlite found under {work_dir}")
+    dbs = handles
     streams = [worker_stream(conn, table) for _, conn in dbs]
     merged = merge_worker_streams(streams)
 
@@ -186,6 +399,14 @@ def main():
     s1_count = sum(1 for _ in iter_s1_ids(a.test_s1))
     print(f"Required S1 rows: {s1_count:,}")
 
+    # Validate the shard set before writing anything. A duplicate offset or a
+    # shard that never ran would otherwise be written out as blank or repeated
+    # rows with no error, because the row-count check below only compares S1
+    # rows written against S1 rows read.
+    worker_dirs = discover_worker_dirs(a.work_dir, a.expect_workers)
+    plan = verify_shard_plan(worker_dirs, s1_count)
+    verify_qid_coverage(worker_dirs, plan, s1_count)
+
     matching_path = a.output_dir / "matching_results.tsv"
     candidates_path = a.output_dir / "candidate_pairs.tsv"
 
@@ -195,6 +416,7 @@ def main():
         output_path=matching_path,
         table="pairs",
         header="source1_entity_id\tmatched_entity_ids\n",
+        dbs=worker_dirs,
     )
     candidate_rows, _ = write_submission(
         work_dir=a.work_dir,
@@ -202,6 +424,7 @@ def main():
         output_path=candidates_path,
         table="candidates",
         header="source1_entity_id\tcandidate_entity_ids\n",
+        dbs=worker_dirs,
     )
 
     if matching_rows != s1_count or candidate_rows != s1_count:

@@ -166,6 +166,7 @@ def acquire_run_lock(lock_path: Path):
         raise
 
 
+<<<<<<< HEAD
 def release_run_lock(handle) -> None:
     if handle is None:
         return
@@ -280,6 +281,96 @@ def main():
         "block_cap": a.block_cap,
         "query_posting_cap": a.query_posting_cap,
     }
+=======
+def parse_args(argv=None):
+    p=argparse.ArgumentParser()
+    p.add_argument('--data-root',type=Path,default=PROJECT_ROOT/'dataset/test')
+    p.add_argument('--work-dir',type=Path,required=True)
+    p.add_argument('--model',type=Path,default=PROJECT_ROOT/'pilot/frozen_pilot_model.json')
+    p.add_argument('--queries',type=int,default=2500,help='bounded preflight query count; 0 means all S1')
+    p.add_argument('--mode',choices=('preflight','full'),default='preflight')
+    p.add_argument('--index-batch',type=int,default=5000)
+    p.add_argument('--target-sample-rate',type=int,default=1,help='index each Nth deterministic target hash; use 20 for preflight')
+    p.add_argument('--query-stride',type=int,default=1,help='number of S1 shards; process only rows where qi %% stride == offset')
+    p.add_argument('--query-offset',type=int,default=0,help='zero-based shard offset in [0, query-stride-1]')
+    p.add_argument('--block-cap',type=int,default=POSTING_CAP)
+    p.add_argument('--query-posting-cap',type=int,default=QUERY_POSTING_CAP)
+    p.add_argument('--output-dir',type=Path,default=PROJECT_ROOT/'output',
+                   help='directory for final matching_results.tsv and candidate_pairs.tsv (default: repository output)')
+    p.add_argument('--no-output',action='store_true',
+                   help='skip TSV generation; recommended for parallel shard workers, which are merged separately')
+    p.add_argument('--index-only',action='store_true',
+                   help='build and commit the target index, then exit without any query work; '
+                        'leaves a self-contained index.sqlite for a sharded query run')
+    p.add_argument('--index-synchronous',choices=('FULL','NORMAL','OFF'),default='FULL',
+                   help='SQLite synchronous mode while building the target index')
+    p.add_argument('--safety-free-gib',type=float,default=20.0,
+                   help='minimum free space to preserve; use 0 only for tiny test fixtures')
+    args=p.parse_args(argv)
+    if args.queries < 0:
+        p.error('--queries must be non-negative')
+    for name in ('index_batch','target_sample_rate','query_stride','block_cap','query_posting_cap'):
+        if getattr(args,name) <= 0:
+            p.error(f'--{name.replace("_", "-")} must be positive')
+    if args.safety_free_gib < 0:
+        p.error('--safety-free-gib must be non-negative')
+    if args.mode == 'full' and args.queries != 0:
+        p.error('--queries must be 0 in full mode (0 means every S1 row)')
+    if not 0 <= args.query_offset < args.query_stride:
+        p.error('--query-offset must be zero-based and satisfy 0 <= offset < query-stride')
+    return args
+
+def main():
+    a=parse_args()
+    a.work_dir=a.work_dir.expanduser().resolve()
+    a.data_root=a.data_root.expanduser().resolve()
+    a.model=a.model.expanduser().resolve()
+    a.output_dir=(a.output_dir or a.work_dir).expanduser().resolve()
+    a.work_dir.mkdir(parents=True,exist_ok=True)
+    output_dir=a.output_dir
+    # An index-only run never renders TSVs, so it must not create or lock the
+    # output directory either.
+    write_output=not (a.no_output or a.index_only)
+    if write_output:
+        output_dir.mkdir(parents=True,exist_ok=True)
+    lock_handle=(a.work_dir/'.run.lock').open('a+', encoding='utf-8')
+    if not acquire_run_lock(lock_handle):
+        raise SystemExit(f'an inference process already holds {a.work_dir}/.run.lock')
+    output_lock_handle=None
+    if write_output and output_dir != a.work_dir:
+        output_lock_handle=(output_dir/'.output.lock').open('a+', encoding='utf-8')
+        if not acquire_run_lock(output_lock_handle):
+            raise SystemExit(f'an inference process already writes {output_dir}')
+    paths={n:a.data_root/f'test_source{n}.tsv' for n in (1,2,3)}
+    missing_inputs=[str(path) for path in paths.values() if not path.is_file()]
+    if missing_inputs:
+        raise SystemExit('missing input file(s): ' + ', '.join(missing_inputs))
+    if not a.model.is_file():
+        raise SystemExit(f'model file not found: {a.model}')
+    try:
+        with a.model.open(encoding='utf-8') as model_handle:
+            model=json.load(model_handle)
+        means=np.asarray(model['feature_mean'],dtype=np.float32)
+        std=np.asarray(model['feature_std'],dtype=np.float32)
+        weights=np.asarray(model['weights'],dtype=np.float32)
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise SystemExit(f'invalid model artifact {a.model}: {exc}') from exc
+    if (model.get('feature_names') != FEATURE_NAMES
+            or means.shape != (len(FEATURE_NAMES),)
+            or std.shape != (len(FEATURE_NAMES),)
+            or weights.shape != (len(FEATURE_NAMES),)
+            or not np.isfinite(means).all()
+            or not np.isfinite(std).all()
+            or not np.isfinite(weights).all()
+            or (std < 0).any()):
+        raise SystemExit('model feature schema incompatibility')
+    decision_policy=model.get('decision_policy', {})
+    if (not isinstance(decision_policy.get('threshold'), (int, float))
+            or not 0.0 <= float(decision_policy['threshold']) <= 1.0
+            or not isinstance(decision_policy.get('max_predictions_per_query'), int)
+            or decision_policy['max_predictions_per_query'] < 1):
+        raise SystemExit('model decision policy is invalid')
+>>>>>>> eaac310 (1)
 
     if state_path.exists():
         with state_path.open("r", encoding="utf-8") as f:
@@ -386,6 +477,7 @@ def main():
                         src,
                     )
                 )
+<<<<<<< HEAD
                 posts.extend(
                     (key, rid)
                     for key in blocking_keys(
@@ -502,6 +594,71 @@ def main():
             keys = sorted(blocking_keys(name, address, country))
             raw_rids = []
 
+=======
+                target_rows.append((rid,row['entity_id'],target_name,target_address,target_country,src))
+                posts.extend((key,rid) for key in blocking_keys(row['business_name'],row['business_address'],row['country']))
+                if count%a.index_batch==0:
+                    flush_index_batch(src,count,target_rows,posts); target_rows.clear(); posts.clear()
+            flush_index_batch(src,count,target_rows,posts); target_rows.clear(); posts.clear()
+        c.execute('CREATE TABLE IF NOT EXISTS keyfreq(key TEXT PRIMARY KEY,n INTEGER NOT NULL) WITHOUT ROWID')
+        c.execute('INSERT OR REPLACE INTO keyfreq SELECT key,count(*) FROM postings GROUP BY key'); c.commit()
+        state['index_complete']=True; state['index_seconds']=time.time()-t0; atomic_json(state_path,state)
+    indexed_target_counts={src:c.execute('SELECT count(*) FROM targets WHERE source=?',(src,)).fetchone()[0] for src in (2,3)}
+    if a.index_only:
+        # Fold the WAL back into the main database *before* closing. A shard
+        # launcher copies index.sqlite alone, never the -wal sidecar, so any
+        # page still living in the WAL would be missing from every worker's
+        # copy and each worker would silently miss those candidates.
+        try:
+            c.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        except sqlite3.OperationalError:
+            pass
+    c.close()
+    if a.index_only:
+        if not state.get('index_complete'):
+            raise SystemExit('--index-only requested but the target index is not complete')
+        report={'index_only':True,'index_target_rows':sum(indexed_target_counts.values()),
+                'indexed_target_rows_by_source':indexed_target_counts,
+                'index_source_rows_scanned':sum(int(state.get(f'source{i}_rows',0)) for i in (2,3)),
+                'index_seconds':state.get('index_seconds'),
+                'index_path':str(index_path),
+                'index_bytes':index_path.stat().st_size,
+                'index_self_contained':not (index_path.with_name(index_path.name+'-wal').exists()),
+                'state_identity':identity}
+        atomic_json(a.work_dir/'preflight_report.json',report)
+        lock_handle.close()
+        if not report['index_self_contained']:
+            raise SystemExit('index still has an uncheckpointed -wal; not safe to copy per worker')
+        print(json.dumps(report,indent=2))
+        return
+    r=db(result_path); r.executescript('''CREATE TABLE IF NOT EXISTS queries(qid INTEGER PRIMARY KEY,id TEXT UNIQUE,name TEXT,address TEXT,country TEXT);
+    CREATE TABLE IF NOT EXISTS pairs(qid INTEGER,target_id TEXT,score REAL,PRIMARY KEY(qid,target_id)) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS candidates(qid INTEGER,target_id TEXT,PRIMARY KEY(qid,target_id)) WITHOUT ROWID;
+    CREATE TABLE IF NOT EXISTS completed(qid INTEGER PRIMARY KEY);''')
+    query_limit=a.queries if a.mode=='preflight' else 0; qstart=int(state.get('query_cursor',0)); rows=0; cand_n=score_n=0; qtime=time.time()
+    last_qi=qstart-1
+    ix=sqlite3.connect(index_path); ix.execute('PRAGMA cache_size=-65536')
+    with paths[1].open(encoding='utf-8-sig',newline='') as f:
+        rd=csv.DictReader(f,delimiter='\t',quoting=csv.QUOTE_NONE)
+        if rd.fieldnames!=['entity_id','business_name','business_address','country']: raise SystemExit('S1 header mismatch')
+        for qi,row in enumerate(rd):
+            last_qi=qi
+            if a.mode=='preflight' and state.get('preflight_complete'): break
+            if qi<qstart: continue
+            # The shard filter applies in BOTH preflight and full mode so that N
+            # workers partition S1 into disjoint, complete shards.
+            if a.query_stride>1 and qi%a.query_stride!=a.query_offset: continue
+            if query_limit and rows>=query_limit: break
+            qid=qi+1
+            if r.execute('SELECT 1 FROM completed WHERE qid=?',(qid,)).fetchone(): continue
+            rows+=1
+            name,address,country=row['business_name'],row['business_address'],normalize_country(row['country'])
+            r.execute('INSERT OR IGNORE INTO queries VALUES(?,?,?,?,?)',(qid,row['entity_id'],name,address,country))
+            ids={}
+            posting_cap=max(1,a.block_cap//a.target_sample_rate); query_posting_cap=max(1,a.query_posting_cap//a.target_sample_rate)
+            keys=sorted(blocking_keys(name,address,country))
+            raw_rids=[]
+>>>>>>> eaac310 (1)
             if keys:
                 marks = ",".join("?" for _ in keys)
                 freq_rows = ix.execute(
