@@ -2,9 +2,9 @@
 """
 ML Challenge 2026 — Submission Validator
 
-Run this BEFORE submitting. It checks your output files against every formatting
-rule the scorer enforces, so you can catch a rejection locally instead of burning
-a submission. It reads only your output files and the test source files (to learn
+Run this BEFORE submitting. It is a local preflight checker for the published
+challenge rules; the organizer's portal validator remains authoritative. It
+reads only your output files and the test source files (to learn
 which S1 entities are required and which S2/S3 IDs exist); it never needs the
 ground truth and never computes your score.
 
@@ -29,24 +29,27 @@ Exit code 0 means the files are safe to submit; 1 means fix the listed issues
 
 ID-existence check (off by default). By default the validator does NOT check that
 every matched/candidate ID actually exists in the test set: that check loads all
-Source-2/3 IDs into memory, which on the full ~1.7M-entity test set costs a few GB
-(more when ``candidate_pairs.tsv`` is included). The default run therefore stays fast
-and light and verifies every other rule; it prints a warning noting the check was
+Source-2/3 IDs into memory, which on the full test set costs a few GB. Candidate
+pairs are streamed without retaining the full candidate mapping, keeping the check
+bounded on a 16 GB machine. The default run stays fast and light and verifies every
+other rule; it prints a warning noting the check was
 skipped. Pass ``--check-ids`` to turn it on (it reads ``test_source2.tsv`` /
-``test_source3.tsv`` from ``--test-dir``); a missing/garbage matched ID only lowers
-your score rather than being rejected by the scorer, so this check is a diagnostic,
-not a gate. If ``--check-ids`` runs out of memory, drop ``--candidate`` (the candidate
-cross-check is the biggest memory user, and the matching file is the only one scored).
+``test_source3.tsv`` from ``--test-dir``); unknown S2/S3 IDs are blocking errors.
+If ``--check-ids`` runs out of memory, validate the matching file first and run
+candidate provenance as a separate resource-aware check.
 """
 
 import argparse
+import heapq
 import os
 import sys
+from pathlib import Path
 
 DELIM = "\t"
 MAX_EXAMPLES = 5  # how many offending IDs to show per issue
 MATCHING_HEADER = ["source1_entity_id", "matched_entity_ids"]
 CANDIDATE_HEADER = ["source1_entity_id", "candidate_entity_ids"]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def read_ids(path):
@@ -54,15 +57,14 @@ def read_ids(path):
 
     The header row is skipped and blank lines are ignored.
     """
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig", newline="") as f:
         next(f, None)  # skip header
         return {line.split(DELIM, 1)[0].strip() for line in f if line.strip()}
 
 
 def examples(items):
-    """Return a short, human-readable sample of ``items`` for an error message."""
-    items = sorted(items)
-    shown = ", ".join(items[:MAX_EXAMPLES])
+    """Return a short sample without sorting a potentially huge error set."""
+    shown = ", ".join(heapq.nsmallest(MAX_EXAMPLES, items))
     if len(items) > MAX_EXAMPLES:
         return f"{len(items)} total, e.g. {shown}, ..."
     return shown
@@ -91,24 +93,35 @@ def load_match_targets(test_dir, warnings):
     return targets
 
 
-def validate_id_list_file(path, expected_header, col_label, required, valid_ids, errors):
+def validate_id_list_file(
+    path,
+    expected_header,
+    col_label,
+    required,
+    valid_ids,
+    errors,
+    *,
+    retain_mapping=True,
+    reference_mapping=None,
+    subset_offenders=None,
+):
     """Validate one results-style TSV (matching or candidate).
 
-    Applies the shared formatting rules and appends any problems to ``errors``.
-    Returns a ``{source1_id: set(matched/candidate ids)}`` mapping, or ``None`` on a
-    fatal problem (missing file, empty file, or a broken header) that stops parsing.
+    ``retain_mapping`` is disabled for the potentially very large candidate file;
+    candidate IDs are checked immediately against the much smaller accepted-match
+    mapping to keep validation bounded on a 16 GB machine.
     """
     if not os.path.isfile(path):
         errors.append(f"File not found: {path}")
         return None
 
     name = os.path.basename(path)
-    mapping = {}
+    mapping = {} if retain_mapping else None
     seen, dup_rows, intra_dupes = set(), set(), set()
     self_matches, wrong_prefix, unknown = set(), set(), set()
     n_rows = empties = 0
 
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig", newline="") as f:
         header = f.readline()
         if not header:
             errors.append(f"{name} is empty.")
@@ -120,7 +133,7 @@ def validate_id_list_file(path, expected_header, col_label, required, valid_ids,
                 "write it with df.to_csv(sep='\\t', index=False)."
             )
             return None
-        cols = [c.strip().lower() for c in header.rstrip("\n").split(DELIM)]
+        cols = header.rstrip("\r\n").split(DELIM)
         if cols != expected_header:
             errors.append(
                 f"{name}: unexpected header {cols}. "
@@ -143,15 +156,19 @@ def validate_id_list_file(path, expected_header, col_label, required, valid_ids,
                 dup_rows.add(s1)
             seen.add(s1)
 
-            ids = rest.rstrip("\n").split(",") if rest.strip() else []
+            ids = rest.rstrip("\r\n").split(",") if rest.strip() else []
             if not ids:
                 empties += 1
-                mapping[s1] = set()
                 continue
             if len(ids) != len(set(ids)):
                 intra_dupes.add(s1)
             id_set = set(ids)
-            mapping[s1] = id_set
+            if retain_mapping:
+                mapping[s1] = id_set
+            if reference_mapping is not None and reference_mapping.get(s1, set()) - id_set:
+                if subset_offenders is None:
+                    raise ValueError("subset_offenders is required with reference_mapping")
+                subset_offenders.add(s1)
             for mid in id_set:
                 if mid.startswith("S1-"):
                     self_matches.add(mid)
@@ -230,14 +247,14 @@ def validate(matching_path, candidate_path, test_dir, check_ids=False):
         warnings.append(
             "ID-existence check is OFF (the default) — not checking that matched/"
             "candidate IDs exist in the test set. Every other rule is still checked. "
-            "Re-run with --check-ids to enable it (needs test_source2/3.tsv; uses "
-            "more memory). A nonexistent ID only lowers your score, never rejects "
-            "your submission."
+            "Re-run with --check-ids for final delivery (needs test_source2/3.tsv; "
+            "uses more memory)."
         )
 
     matched = validate_id_list_file(
         matching_path, MATCHING_HEADER, "matched_entity_ids", required, valid_ids, errors
     )
+    subset_offenders = set()
 
     # candidate_pairs.tsv is optional: if it's absent we skip its checks with a
     # warning (it's still expected in your final submission zip). A missing
@@ -247,6 +264,9 @@ def validate(matching_path, candidate_path, test_dir, check_ids=False):
         candidate = validate_id_list_file(
             candidate_path, CANDIDATE_HEADER, "candidate_entity_ids",
             required, valid_ids, errors,
+            retain_mapping=False,
+            reference_mapping=matched,
+            subset_offenders=subset_offenders,
         )
     elif candidate_path:
         warnings.append(
@@ -258,16 +278,12 @@ def validate(matching_path, candidate_path, test_dir, check_ids=False):
     # Soft check: your final matches should come from your blocking candidates.
     # A matched ID absent from candidate_pairs.tsv usually means a pipeline bug,
     # so we warn but never fail on it.
-    if matched is not None and candidate is not None:
-        offenders = {
-            s1 for s1, mids in matched.items() if mids - candidate.get(s1, set())
-        }
-        if offenders:
-            warnings.append(
-                f"{len(offenders)} S1 entity(ies) have matched IDs not present in "
-                f"candidate_pairs.tsv, e.g. {examples(offenders)}. Final matches "
-                "normally come from your blocking candidates — double-check these."
-            )
+    if subset_offenders:
+        warnings.append(
+            f"{len(subset_offenders)} S1 entity(ies) have matched IDs not present in "
+            f"candidate_pairs.tsv, e.g. {examples(subset_offenders)}. Final matches "
+            "normally come from your blocking candidates — double-check these."
+        )
 
     return errors, warnings
 
@@ -279,7 +295,7 @@ def main():
     parser.add_argument(
         "--matching",
         "-m",
-        default="output/matching_results.tsv",
+        default=PROJECT_ROOT / "output/matching_results.tsv",
         help="Path to matching_results.tsv (default: %(default)s)",
     )
     parser.add_argument(
@@ -292,7 +308,7 @@ def main():
     parser.add_argument(
         "--test-dir",
         "-t",
-        default="dataset/test",
+        default=PROJECT_ROOT / "dataset/test",
         help="Folder with test_source1/2/3.tsv (default: %(default)s). "
         "test_source2/3.tsv are only read when --check-ids is given.",
     )
@@ -301,14 +317,14 @@ def main():
         action="store_true",
         help="Also check that every matched/candidate ID exists in the test "
         "Source-2/3 files. Off by default (loads all S2/S3 IDs into memory — a few "
-        "GB on the full test set). A nonexistent ID only lowers your score, so this "
-        "is a diagnostic, not a submission gate.",
+        "GB on the full test set). Candidate rows are streamed without retaining "
+        "the full candidate mapping.",
     )
     args = parser.parse_args()
 
     # candidate_pairs.tsv is optional; default to the conventional path and let
     # validate() skip (with a warning) if the file isn't there.
-    candidate_path = args.candidate or "output/candidate_pairs.tsv"
+    candidate_path = args.candidate or PROJECT_ROOT / "output/candidate_pairs.tsv"
 
     print("ML Challenge 2026 — submission validator")
     print(f"  test dir: {args.test_dir}")
@@ -324,7 +340,8 @@ def main():
             f"{candidate_path}). Re-save it as a plain UTF-8, tab-separated .tsv — "
             "not cp1252/Latin-1, and not a compressed or binary file (.gz/.xlsx/"
             ".parquet) renamed to .tsv. In pandas: "
-            "df.to_csv(path, sep='\\t', index=False, encoding='utf-8')."
+            "df.to_csv(path, sep='\\t', index=False, encoding='utf-8', "
+            "lineterminator='\\n')."
         )
         return 1
     except OSError as exc:
