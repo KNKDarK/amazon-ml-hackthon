@@ -6,12 +6,29 @@ After=default.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+<<<<<<< HEAD
 WorkingDirectory=/home/knk/ml/student_resource
 ExecStart=/home/knk/ml/student_resource/pilot/launch_supervised_pilot.sh
 Environment=PYTHONUNBUFFERED=1
 StandardInput=null
 StandardOutput=append:/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/pilot.stdout.log
 StandardError=append:/home/knk/ml/student_resource/artifacts/pilot_10k_restart_20260925/pilot.stderr.log
+=======
+WorkingDirectory=%h/amazon-ml-hackthon
+Environment=PYTHON=%h/amazon-ml-hackthon/.venv/bin/python
+Environment=DATA_ROOT=%h/amazon-ml-hackthon/dataset
+Environment=WORK_DIR=%h/amazon-ml-hackthon/artifacts/pilot_10k_supervised
+Environment=SELECTION_CAP=500
+Environment=MAX_PROJECTED_POSTINGS=5000000
+# Worker processes for the full-corpus blocking passes. Clamped at runtime to
+# the CPU and RAM ceilings; set WORKERS=1 for the serial path.
+Environment=WORKERS=10
+# 0 auto-sizes the pool to 60% of MemAvailable at startup.
+Environment=RAM_BUDGET_GIB=0
+# One native BLAS/OpenMP thread per worker; the pool already saturates the CPU.
+Environment=NATIVE_THREADS=1
+ExecStart=%h/amazon-ml-hackthon/pilot/launch_supervised_pilot.sh
+>>>>>>> 5f56dee (Process-parallel full-corpus blocking passes)
 SyslogIdentifier=student-resource-pilot-10k
 TimeoutStartSec=infinity
 TimeoutStopSec=120s

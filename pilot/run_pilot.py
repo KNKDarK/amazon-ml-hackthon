@@ -26,6 +26,15 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
+# Native math runtimes must be pinned before NumPy loads their thread pools.
+# See pilot/thread_env.py; this import deliberately precedes "import numpy".
+try:
+    from pilot.thread_env import cap_native_threads
+except ModuleNotFoundError:  # direct ``python pilot/run_pilot.py`` execution
+    from thread_env import cap_native_threads  # type: ignore[no-redef]
+
+cap_native_threads(1)
+
 import numpy as np
 
 from er_common import (
@@ -46,6 +55,37 @@ from er_common import (
     reservoir_sample_rows,
     stable_u64,
 )
+
+try:
+    from pilot.parallel_scan import (
+        candidate_chunk,
+        frequency_chunk,
+        plan_byte_ranges,
+        ram_budget_bytes,
+        resolve_workers,
+        run_chunks,
+        _init_candidate_state,
+        _init_frequency_state,
+    )
+except ModuleNotFoundError:  # direct ``python pilot/run_pilot.py`` execution
+    from parallel_scan import (  # type: ignore[no-redef]
+        candidate_chunk,
+        frequency_chunk,
+        plan_byte_ranges,
+        ram_budget_bytes,
+        resolve_workers,
+        run_chunks,
+        _init_candidate_state,
+        _init_frequency_state,
+    )
+
+# Byte ranges per worker.  Slight oversubscription keeps all workers fed when
+# row cost varies, while the ranges stay large enough to amortise pickling.
+CHUNKS_PER_WORKER = 4
+
+# SQLite page cache for the candidate and feature databases.  Sized from the RAM
+# budget in run_pipeline; this is only the fallback for direct library callers.
+SQLITE_CACHE_MIB = 256
 
 
 @dataclass(slots=True)
@@ -186,6 +226,7 @@ def measure_block_frequencies(
     truth: Mapping[int, Set[str]],
     key_index: Mapping[str, List[Tuple[int, int]]],
     monitor: MemoryMonitor,
+    workers: int = 1,
 ) -> Tuple[Dict[str, int], Dict[Tuple[int, str], Set[str]], Dict[str, object]]:
     counts: Dict[str, int] = {key: 0 for key in key_index}
     true_keys: Dict[Tuple[int, str], Set[str]] = defaultdict(set)
@@ -202,27 +243,33 @@ def measure_block_frequencies(
         path = data_root / "train" / name
         rows = matched_rows = generated_postings = 0
         pass_started = time.perf_counter()
-        for row in iter_tsv(path):
-            rows += 1
-            target_id = row["entity_id"]
-            keys = blocking_keys(row["business_name"], row["business_address"], row["country"])
-            generated_postings += len(keys)
-            row_matched = False
-            positive_qrow = target_to_query.get(target_id)
-            for key in keys:
-                entries = key_index.get(key)
-                if not entries:
-                    continue
-                counts[key] += 1
-                row_matched = True
-                if positive_qrow is not None and any(qrow == positive_qrow for qrow, _ in entries):
-                    true_keys[(positive_qrow, target_id)].add(key)
-            matched_rows += int(row_matched)
-            if rows % 500_000 == 0:
-                available_gib = available_memory_bytes() / 1024 ** 3
-                log(f"frequency pass {name}: {rows:,}; process RSS={monitor.peak_rss / 1024**2:.1f} MiB; "
-                    f"MemAvailable={available_gib:.2f} GiB")
-                if available_gib and available_gib < 2.0:
+        # Each worker reads its own byte range, so the CSV decode and the key
+        # generation both scale with the pool.  Results are merged in ascending
+        # range order, which keeps the aggregates identical to the serial scan.
+        tasks = [(str(path), start, end)
+                 for start, end in plan_byte_ranges(path, workers * CHUNKS_PER_WORKER)]
+        for position, (delta, hits, chunk_rows, chunk_matched, chunk_postings) in run_chunks(
+            tasks,
+            frequency_chunk,
+            _init_frequency_state,
+            (key_index, target_to_query),
+            workers,
+        ):
+            for key, increment in delta.items():
+                counts[key] = counts.get(key, 0) + increment
+            for qrow, target_id, key in hits:
+                true_keys[(qrow, target_id)].add(key)
+            rows += chunk_rows
+            matched_rows += chunk_matched
+            generated_postings += chunk_postings
+            if position % 5 == 0 or position + 1 == len(tasks):
+                available = available_memory_bytes()
+                percent = 100.0 * (position + 1) / len(tasks)
+                log(f"frequency pass {name}: range {position + 1}/{len(tasks)} "
+                    f"({percent:.0f}%), {rows:,} rows; "
+                    f"process RSS={monitor.peak_rss / 1024**2:.1f} MiB; "
+                    f"MemAvailable={available / 1024 ** 3:.2f} GiB")
+                if available and available < 2 * 1024 ** 3:
                     log("WARNING: available RAM is below 2 GiB; forcing GC before continuing")
                     gc.collect()
         source_stats[f"S{source_number}"] = {
@@ -410,9 +457,10 @@ def persist_candidates(
     active_index: Mapping[str, List[Tuple[int, int]]],
     monitor: MemoryMonitor,
     initial_batch_size: int,
+    workers: int = 1,
 ) -> Tuple[Path, Dict[str, object]]:
     path = work_dir / "pilot_candidates.sqlite"
-    connection = configure_sqlite(path)
+    connection = configure_sqlite(path, cache_mib=SQLITE_CACHE_MIB)
     connection.execute("""
         CREATE TABLE candidates (
             qrow INTEGER NOT NULL,
@@ -445,6 +493,7 @@ def persist_candidates(
     for source_number, name in ((2, "train_source2.tsv"), (3, "train_source3.tsv")):
         source_started = time.perf_counter()
         source_rows = source_candidates = source_matches = 0
+<<<<<<< HEAD
         for row in iter_tsv(data_root / "train" / name):
             source_rows += 1
             total_rows += 1
@@ -471,6 +520,32 @@ def persist_candidates(
                 source_candidates += 1
                 if qrow == positive_qrow:
                     retrieved_true_masks[(qrow, target_id)] = mask
+=======
+        # Sources are still processed S2 then S3 and ranges are merged in
+        # ascending order, so the last-writer-wins behaviour of
+        # retrieved_true_masks is identical to the serial implementation.
+        source_path = data_root / "train" / name
+        tasks = [(str(source_path), start, end, source_number)
+                 for start, end in plan_byte_ranges(source_path,
+                                                    workers * CHUNKS_PER_WORKER)]
+        for position, (records, true_masks, chunk_rows, chunk_keys, chunk_matches) in run_chunks(
+            tasks,
+            candidate_chunk,
+            _init_candidate_state,
+            (active_index, target_to_query),
+            workers,
+        ):
+            # Chunks are merged in file order, so a plain update reproduces the
+            # serial last-writer-wins assignment for repeated (qrow, target_id).
+            retrieved_true_masks.update(true_masks)
+            source_rows += chunk_rows
+            total_rows += chunk_rows
+            source_matches += chunk_matches
+            total_posting_matches += chunk_matches
+            total_generated_keys += chunk_keys
+            source_candidates += len(records)
+            batch.extend(records)
+>>>>>>> 5f56dee (Process-parallel full-corpus blocking passes)
             if len(batch) >= batch_size:
                 connection.executemany(insert_sql, batch)
                 inserted_since_commit += len(batch)
@@ -479,9 +554,11 @@ def persist_candidates(
                     connection.commit()
                     inserted_since_commit = 0
                     gc.collect()
-            if source_rows % 250_000 == 0:
+            if position % 5 == 0 or position + 1 == len(tasks):
                 available_gib = available_memory_bytes() / 1024 ** 3
-                log(f"candidate pass {name}: {source_rows:,} targets; batch={batch_size:,}; "
+                percent = 100.0 * (position + 1) / len(tasks)
+                log(f"candidate pass {name}: range {position + 1}/{len(tasks)} ({percent:.0f}%), "
+                    f"{source_rows:,} targets, {source_candidates:,} candidates; batch={len(batch):,}; "
                     f"process RSS={monitor.peak_rss / 1024**2:.1f} MiB; MemAvailable={available_gib:.2f} GiB")
                 batch_size = adapt_batch(batch_size, minimum_batch=1000)
                 if available_gib and available_gib < 2.0:
@@ -1174,7 +1251,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-projected-postings", type=int, default=2_000_000)
     parser.add_argument("--negative-per-query", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=10_000)
+<<<<<<< HEAD
     return parser.parse_args()
+=======
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=10,
+        help="worker processes for the two full-corpus blocking passes; "
+             "clamped to the CPU and RAM ceilings. Use 1 to force the serial path.",
+    )
+    parser.add_argument(
+        "--ram-budget-gib",
+        type=float,
+        default=0.0,
+        help="hard RAM ceiling for the pool; 0 (default) auto-sizes to 60%% of MemAvailable",
+    )
+    args = parser.parse_args(argv)
+    for name in ("sample_size", "max_projected_postings", "negative_per_query", "batch_size"):
+        if getattr(args, name) <= 0:
+            parser.error(f"--{name.replace('_', '-')} must be positive")
+    if args.workers <= 0:
+        parser.error("--workers must be positive")
+    if args.ram_budget_gib < 0:
+        parser.error("--ram-budget-gib must be zero (auto) or positive")
+    if args.selection_cap is not None and args.selection_cap <= 0:
+        parser.error("--selection-cap must be positive")
+    return args
+>>>>>>> 5f56dee (Process-parallel full-corpus blocking passes)
 
 
 def main() -> int:
@@ -1185,6 +1289,20 @@ def main() -> int:
     monitor = MemoryMonitor().start()
     timer = PhaseTimer(phases={})
     overall_started = time.perf_counter()
+
+    # Size the pool before any heavy allocation: the budget is a snapshot of
+    # MemAvailable, and the workers plus the SQLite caches all draw from it.
+    start_available = available_memory_bytes()
+    budget = ram_budget_bytes(start_available, args.ram_budget_gib)
+    workers = resolve_workers(args.workers, budget)
+    global SQLITE_CACHE_MIB
+    SQLITE_CACHE_MIB = max(128, min(1024, int(budget / 8 / 1024 ** 2)))
+    log(f"parallel plan: workers={workers} (requested {args.workers}); "
+        f"RAM budget={budget / 1024 ** 3:.2f} GiB of {start_available / 1024 ** 3:.2f} GiB available; "
+        f"SQLite cache={SQLITE_CACHE_MIB} MiB per database")
+    log(f"native thread caps in effect: {cap_native_threads(1)}")
+    if workers < args.workers:
+        log("WARNING: worker count clamped by the CPU or RAM ceiling")
 
     started = timer.start()
     queries, truth, _split = sample_queries(args.data_root, args.work_dir, args.sample_size)
@@ -1197,7 +1315,7 @@ def main() -> int:
 
     started = timer.start()
     key_counts, true_keys, frequency_stats = measure_block_frequencies(
-        args.data_root, queries, truth, key_index, monitor
+        args.data_root, queries, truth, key_index, monitor, workers
     )
     timer.finish("measure_block_frequencies", started)
 
@@ -1217,7 +1335,8 @@ def main() -> int:
 
     started = timer.start()
     candidate_db, candidate_stats = persist_candidates(
-        args.data_root, args.work_dir, queries, truth, active_index, monitor, args.batch_size
+        args.data_root, args.work_dir, queries, truth, active_index, monitor,
+        args.batch_size, workers
     )
     timer.finish("persist_candidates", started)
     del active_index, key_index, key_counts, true_keys
@@ -1285,6 +1404,13 @@ def main() -> int:
             "phase_seconds": timer.phases,
             "memory": monitor.as_dict(),
             "start_available_memory_bytes": available_memory_bytes(),
+            "parallelism": {
+                "workers": workers,
+                "requested_workers": args.workers,
+                "ram_budget_bytes": budget,
+                "sqlite_cache_mib": SQLITE_CACHE_MIB,
+                "native_thread_caps": cap_native_threads(1),
+            },
         },
         "projection": projection,
     }
