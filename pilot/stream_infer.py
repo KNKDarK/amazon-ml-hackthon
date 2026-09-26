@@ -44,7 +44,7 @@ try:
 except ImportError:
     resource = None
 
-VERSION = 2
+VERSION = 3
 POSTING_CAP = 100
 QUERY_POSTING_CAP = 100
 
@@ -201,6 +201,10 @@ def parse_args():
     )
     p.add_argument("--mode", choices=("preflight", "full"), default="preflight")
     p.add_argument("--index-batch", type=int, default=5000)
+    p.add_argument("--index-path", type=Path, default=None,
+                   help="existing target index; use with --index-read-only for shared workers")
+    p.add_argument("--index-read-only", action="store_true",
+                   help="open --index-path read-only and never modify the target index")
     p.add_argument(
         "--target-sample-rate",
         type=int,
@@ -270,8 +274,13 @@ def main():
         str(p): [p.stat().st_size, p.stat().st_mtime_ns] for p in paths.values()
     }
     state_path = a.work_dir / "checkpoint.json"
-    index_path = a.work_dir / "index.sqlite"
+    index_path = (a.index_path if a.index_path is not None else a.work_dir / "index.sqlite").resolve()
     result_path = a.work_dir / "results.sqlite"
+
+    if a.index_read_only and a.index_path is None:
+        raise SystemExit("--index-read-only requires --index-path")
+    if a.index_read_only and not index_path.exists():
+        raise SystemExit(f"read-only index not found: {index_path}")
 
     profile = {
         "target_sample_rate": a.target_sample_rate,
@@ -279,6 +288,8 @@ def main():
         "query_offset": a.query_offset,
         "block_cap": a.block_cap,
         "query_posting_cap": a.query_posting_cap,
+        "index_read_only": bool(a.index_read_only),
+        "index_path": str(index_path),
     }
 
     if state_path.exists():
@@ -305,26 +316,34 @@ def main():
         )
 
     t0 = time.time()
-    c = db(
-        index_path,
-        synchronous=a.index_synchronous,
-        journal_mode="OFF" if a.index_synchronous == "OFF" else "WAL",
-    )
-    c.executescript(
-        """CREATE TABLE IF NOT EXISTS targets(
-               rid INTEGER PRIMARY KEY,
-               id TEXT UNIQUE,
-               name TEXT,
-               address TEXT,
-               country TEXT,
-               source INTEGER
-           );
-           CREATE TABLE IF NOT EXISTS postings(
-               key TEXT NOT NULL,
-               rid INTEGER NOT NULL,
-               PRIMARY KEY(key,rid)
-           ) WITHOUT ROWID;"""
-    )
+    if a.index_read_only:
+        c = sqlite3.connect(f"file:{index_path.as_posix()}?mode=ro", uri=True)
+        c.execute("PRAGMA query_only=ON")
+        c.execute("PRAGMA temp_store=FILE")
+        c.execute("PRAGMA cache_size=-65536")
+        if not state["index_complete"]:
+            raise SystemExit("read-only shared index requires index_complete=true in checkpoint")
+    else:
+        c = db(
+            index_path,
+            synchronous=a.index_synchronous,
+            journal_mode="OFF" if a.index_synchronous == "OFF" else "WAL",
+        )
+        c.executescript(
+            """CREATE TABLE IF NOT EXISTS targets(
+                   rid INTEGER PRIMARY KEY,
+                   id TEXT UNIQUE,
+                   name TEXT,
+                   address TEXT,
+                   country TEXT,
+                   source INTEGER
+               );
+               CREATE TABLE IF NOT EXISTS postings(
+                   key TEXT NOT NULL,
+                   rid INTEGER NOT NULL,
+                   PRIMARY KEY(key,rid)
+               ) WITHOUT ROWID;"""
+        )
 
     if not state["index_complete"]:
 
@@ -460,7 +479,11 @@ def main():
     qtime = time.time()
     last_qi = qstart - 1
 
-    ix = sqlite3.connect(index_path)
+    if a.index_read_only:
+        ix = sqlite3.connect(f"file:{index_path.as_posix()}?mode=ro", uri=True)
+    else:
+        ix = sqlite3.connect(index_path)
+    ix.execute("PRAGMA query_only=ON")
     ix.execute("PRAGMA cache_size=-65536")
 
     with paths[1].open(encoding="utf-8", newline="") as f:

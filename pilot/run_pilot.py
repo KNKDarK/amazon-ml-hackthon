@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Bounded end-to-end entity-resolution pilot on 10,000 training S1 rows.
 
 The script is intentionally pilot-only.  It never reads the test files and does
@@ -559,7 +559,7 @@ def persist_candidates(
         "sources": source_stats,
         "candidate_sqlite_bytes": path.stat().st_size,
         "candidate_sqlite_logical_page_bytes": page_count * page_size,
-        "seconds": time.perf_counter() - started,
+        "seconds": time.perf_counter() - start,
     }
     write_json(work_dir / "candidate_stats.json", stats)
     log(f"candidate generation complete: {candidate_count:,} pairs, recall={stats['true_pair_recall']:.6f}, "
@@ -638,7 +638,7 @@ def build_feature_database(
         "feature_sqlite_bytes": feature_db.stat().st_size,
         "feature_sqlite_logical_page_bytes": page_count * page_size,
         "bytes_per_candidate_including_key": feature_db.stat().st_size / rows if rows else 0.0,
-        "seconds": time.perf_counter() - started,
+        "seconds": time.perf_counter() - start,
     }
     write_json(feature_db.with_suffix(".stats.json"), stats)
     log(f"feature generation complete: {rows:,} vectors -> {feature_db.stat().st_size / 1024**2:.1f} MiB "
@@ -739,52 +739,55 @@ def train_compact_classifier(
     negatives_count = int(len(y) - positives_count)
     sample_weight = np.where(y == 1, negatives_count / max(1, positives_count), 1.0).astype(np.float32)
     sample_weight /= sample_weight.mean()
-    weights = np.zeros(Z.shape[1], dtype=np.float32)
-    first_moment = np.zeros_like(weights)
-    second_moment = np.zeros_like(weights)
-    beta1, beta2, epsilon = 0.9, 0.999, 1e-8
+    # --- GPU PyTorch CUDA Accelerated Solver (RTX 5070 Ti) ---
+    import torch
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log(f"Training Logistic Reranker on {device} ({len(Z):,} samples, {Z.shape[1]} features)...")
+
+    Z_tensor = torch.tensor(Z, dtype=torch.float32, device=device)
+    y_tensor = torch.tensor(y, dtype=torch.float32, device=device).unsqueeze(1)
+    w_tensor = torch.tensor(sample_weight, dtype=torch.float32, device=device).unsqueeze(1)
+
+    # Linear Layer matching Z @ weights schema
+    linear_layer = torch.nn.Linear(Z.shape[1], 1, bias=False).to(device)
+    torch.nn.init.zeros_(linear_layer.weight)
+
+    optimizer = torch.optim.AdamW(linear_layer.parameters(), lr=0.03, weight_decay=1e-4)
+
     batch_size = 4096
-    epochs = 12
+    epochs = 25
+    num_samples = len(Z)
+
+    for epoch in range(1, epochs + 1):
+        permutation = torch.randperm(num_samples, device=device)
+        epoch_loss = 0.0
+
+        for start in range(0, num_samples, batch_size):
+            indices = permutation[start : start + batch_size]
+            xb, yb, wb = Z_tensor[indices], y_tensor[indices], w_tensor[indices]
+
+            optimizer.zero_grad()
+            logits = linear_layer(xb)
+            bce = torch.nn.functional.binary_cross_entropy_with_logits(logits, yb, reduction="none")
+            loss = (bce * wb).mean()
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item() * len(xb)
+
+        if epoch % 5 == 0 or epoch == epochs:
+            log(f"classifier GPU epoch {epoch:02d}/{epochs}: weighted loss={epoch_loss / num_samples:.6f}")
+
     learning_rate = 0.03
     l2 = 1e-4
-    started = time.perf_counter()
-    generator = np.random.default_rng(20260925)
-    for epoch in range(epochs):
-        order = generator.permutation(len(Z))
-        epoch_loss = 0.0
-        seen_weight = 0.0
-        for start in range(0, len(order), batch_size):
-            index = order[start : start + batch_size]
-            xb = Z[index]
-            yb = y[index].astype(np.float32)
-            wb = sample_weight[index]
-            logits = np.clip(xb @ weights, -20.0, 20.0)
-            probabilities = 1.0 / (1.0 + np.exp(-logits))
-            error = (probabilities - yb) * wb
-            gradient = (xb.T @ error) / len(index)
-            penalty = np.zeros_like(weights)
-            penalty[1:] = l2 * weights[1:]
-            gradient += penalty
-            first_moment = beta1 * first_moment + (1.0 - beta1) * gradient
-            second_moment = beta2 * second_moment + (1.0 - beta2) * gradient * gradient
-            corrected_first = first_moment / (1.0 - beta1 ** (epoch + 1))
-            corrected_second = second_moment / (1.0 - beta2 ** (epoch + 1))
-            weights -= learning_rate * corrected_first / (np.sqrt(corrected_second) + epsilon)
-            loss = np.maximum(logits, 0) - logits * yb + np.log1p(np.exp(-np.abs(logits)))
-            epoch_loss += float((loss * wb).sum())
-            seen_weight += float(wb.sum())
-            if int(start / batch_size) % 100 == 0:
-                available_gib = available_memory_bytes() / 1024 ** 3
-                if available_gib and available_gib < 2.0:
-                    gc.collect()
-                    log("WARNING: low MemAvailable during classifier training; forcing GC")
-        log(f"classifier epoch {epoch + 1}/{epochs}: weighted loss={epoch_loss / max(seen_weight, 1e-9):.6f}, "
-            f"process RSS={monitor.peak_rss / 1024**2:.1f} MiB")
-
+    weights = linear_layer.weight.detach().cpu().numpy().ravel().astype(np.float32)
     scores = Z @ weights
     auc = binary_auc(scores, y)
+    learning_rate = 0.03
+    l2 = 1e-4
     stats: Dict[str, object] = {
-        "model": "NumPy mini-batch Adam logistic regression",
+        "model": "PyTorch CUDA Logistic Reranker (RTX 5070 Ti)",
         "feature_count": len(FEATURE_NAMES),
         "training_rows": len(y),
         "training_positive_rows": positives_count,
@@ -797,7 +800,7 @@ def train_compact_classifier(
         "learning_rate": learning_rate,
         "l2": l2,
         "training_auc": auc,
-        "seconds": time.perf_counter() - started,
+        "seconds": time.perf_counter() - start,
     }
     return weights, mean, std, stats
 
@@ -875,7 +878,7 @@ def score_all_candidates(
     stats = {
         "rows": rows,
         "score_sqlite_bytes": score_db.stat().st_size,
-        "seconds": time.perf_counter() - started,
+        "seconds": time.perf_counter() - start,
     }
     write_json(score_db.with_suffix(".stats.json"), stats)
     log(f"scoring complete: {rows:,} rows in {stats['seconds']:.1f}s")
@@ -1080,7 +1083,7 @@ def build_projection(
     projected_index_postings = int(average_target_keys * test_targets)
     # Conservative SQLite B-tree estimate: 48 logical/physical bytes per posting.
     projected_index_db = projected_index_postings * 48
-    free_bytes = os.statvfs(work_dir).f_bavail * os.statvfs(work_dir).f_frsize
+    import shutil; free_bytes = shutil.disk_usage(work_dir).free
     pilot_compute_seconds = float(timer.phases.get("total_wall", sum(timer.phases.values())))
     projection = {
         "method": "linear scaling by S1 query count and S2+S3 target rows; conservative 48 bytes/index posting",
