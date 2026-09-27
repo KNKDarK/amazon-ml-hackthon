@@ -55,14 +55,14 @@ def main():
     qids = {q.entity_id for q in queries if q.split == "validation"}
 
     labels_path = WORK / "pilot_labels.tsv"
-    truth_by_entity = {}
+    truth = {}
 
     with labels_path.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f, delimiter="\t")
         for row in reader:
             src = row["source1_entity_id"]
             targets = {x for x in row["matched_entity_ids"].split(",") if x}
-            truth_by_entity[src] = targets
+            truth[src] = targets
 
     print(f"Extracting features from {feat_db.name} ('{feat_table}' table)...")
     con_feat = sqlite3.connect(feat_db)
@@ -80,7 +80,7 @@ def main():
 
         if s == "train":
             entity_id = qrow_to_entity.get(qrow)
-            is_match = 1 if (entity_id and tid_str in truth_by_entity.get(entity_id, set())) else 0
+            is_match = 1 if (entity_id and tid_str in truth.get(entity_id, set())) else 0
             train_features.append(feat)
             train_labels.append(is_match)
         elif s == "validation":
@@ -148,14 +148,41 @@ def main():
         z_feat[0] = 1.0
         logit = float(np.clip(z_feat @ weights, -30.0, 30.0))
         score = 1.0 / (1.0 + np.exp(-logit))
-        is_true = int(tid_str in truth_by_entity.get(entity_id, set()))
+        is_true = int(tid_str in truth.get(entity_id, set()))
         validation_data[entity_id].append((tid_str, score, is_true))
 
     for entity_id in validation_data:
         validation_data[entity_id].sort(key=lambda x: x[1], reverse=True)
 
     print("Running policy threshold/cap search...")
-    best, trials = rp.optimize_policy(validation_data, truth_by_entity, qids)
+    best, trials = rp.optimize_policy(validation_data, truth, qids)
+
+    OUT = Path("artifacts/gpu_linear_model_10k")
+    OUT.mkdir(parents=True, exist_ok=True)
+
+    artifact = {
+        "model_type": "gpu_linear_logistic",
+        "feature_names": list(rp.FEATURE_NAMES),
+        "weights": weights.tolist(),
+        "feature_mean": mean.tolist(),
+        "feature_std": std.tolist(),
+        "decision_policy": {
+            "threshold": float(best["threshold"]),
+            "max_predictions_per_query": int(best["max_predictions_per_query"]),
+        },
+        "validation": {
+            "macro_f05": float(best["macro_f05"]),
+            "micro_precision": float(best["micro_precision"]),
+            "micro_recall": float(best["micro_recall"]),
+        },
+    }
+
+    (OUT / "model.json").write_text(
+        json.dumps(artifact, indent=2),
+        encoding="utf-8",
+    )
+
+    print("Saved:", OUT / "model.json")
 
     elapsed = time.perf_counter() - start_time
     print("\n" + "=" * 70)
